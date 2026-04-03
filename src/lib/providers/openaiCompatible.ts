@@ -5,12 +5,14 @@ import type {
   SmartScriptSegment,
   StructuredBlock
 } from '@/lib/shared/types';
+import { assertSafeProviderConfig } from '@/lib/providers/security';
 
 function trimSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
 function resolveHeaders(provider: ProviderConfig): Record<string, string> {
+  assertSafeProviderConfig(provider);
   return {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${provider.apiKeyStoredLocally}`,
@@ -194,15 +196,6 @@ export function buildTtsConnectivityRequest(provider: ProviderConfig): { url: st
   });
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (const item of bytes) {
-    binary += String.fromCharCode(item);
-  }
-  return btoa(binary);
-}
-
 export async function fetchRemoteTtsAudio(
   provider: ProviderConfig,
   text: string,
@@ -227,7 +220,7 @@ export async function fetchRemoteTtsAudio(
   const buffer = await response.arrayBuffer();
   return {
     mimeType: response.headers.get('content-type') || 'audio/mpeg',
-    base64Audio: arrayBufferToBase64(buffer)
+    audioBuffer: buffer
   };
 }
 

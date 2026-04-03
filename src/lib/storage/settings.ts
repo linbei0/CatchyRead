@@ -14,7 +14,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
       modelOrVoice: 'gpt-4.1-mini',
       apiKeyStoredLocally: '',
       headers: {},
-      temperature: 0.3
+      temperature: 0.3,
+      allowInsecureTransport: false,
+      allowPrivateNetwork: false
     },
     tts: {
       providerId: 'openai-compatible-tts',
@@ -24,7 +26,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
       modelOrVoice: 'gpt-4o-mini-tts',
       apiKeyStoredLocally: '',
       headers: {},
-      voiceId: 'alloy'
+      voiceId: 'alloy',
+      allowInsecureTransport: false,
+      allowPrivateNetwork: false
     }
   },
   playback: {

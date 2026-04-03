@@ -1,7 +1,13 @@
 import browser from 'webextension-polyfill';
 
+import { detectPlaybackCapabilities } from '@/content/capabilities';
+import { shouldHandlePageSelection } from '@/content/page-selection-mode';
+import { PageRefreshWatcher } from '@/content/page-refresh';
 import { resolvePlaybackPreparation } from '@/content/playbackQueue';
 import { getCollapsedVisibilityModel } from '@/content/playerUiState';
+import { resolvePreviewKeyboardAction } from '@/content/preview-keyboard';
+import { RemoteAudioUrlCache } from '@/content/remote-audio-url-cache';
+import { RuntimeCacheRegistry } from '@/lib/cache/runtime-cache-registry';
 import { buildSpokenSegments } from '@/lib/extract/blockProcessing';
 import { extractPageSnapshot } from '@/lib/extract/pageSnapshot';
 import { isProviderConfigured } from '@/lib/shared/messages';
@@ -11,6 +17,7 @@ import type {
   CodeStrategy,
   PageSnapshot,
   ReadingMode,
+  RemoteAudioPayload,
   SmartScriptSegment,
   SpeechEngine
 } from '@/lib/shared/types';
@@ -61,6 +68,7 @@ function playerCss(): string {
       background: rgba(15, 23, 42, 0.68);
     }
     .preview button.active { border-color: rgba(129, 140, 248, 0.56); background: rgba(30, 41, 59, 0.95); }
+    .preview button:focus-visible { outline: 2px solid rgba(125, 211, 252, 0.92); outline-offset: 2px; }
     .preview small { color: #93c5fd; }
     .collapsed .status, .collapsed .row, .collapsed .content-actions, .collapsed .preview { display: none; }
     .collapsed .panel { width: auto; }
@@ -105,9 +113,16 @@ class CatchyReadContent {
   private currentSpeechEngine: SpeechEngine = 'browser';
   private open = false;
   private speaking = false;
+  private pageSelectionMode = false;
+  private pageSnapshotStale = false;
   private highlightedIds: string[] = [];
   private remoteAudio = new Audio();
-  private remoteAudioCache = new Map<string, Promise<{ mimeType: string; base64Audio: string }>>();
+  private remoteAudioPayloadCache = new Map<string, Promise<RemoteAudioPayload>>();
+  private remoteAudioUrlCache = new RemoteAudioUrlCache(3);
+  private persistUiTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly capabilities = detectPlaybackCapabilities();
+  private readonly pageRefreshWatcher = new PageRefreshWatcher(() => this.markPageStale());
+  private readonly cacheRegistry = new RuntimeCacheRegistry();
 
   constructor() {
     ensureHighlightStyle();
@@ -155,7 +170,7 @@ class CatchyReadContent {
             <button id="close" type="button">关闭</button>
           </div>
         </div>
-        <div class="status" id="status"></div>
+        <div class="status" id="status" role="status" aria-live="polite"></div>
         <div class="row">
           <select id="mode">
             <option value="smart">智能模式</option>
@@ -180,6 +195,8 @@ class CatchyReadContent {
         <div class="content-actions" style="margin-top:10px;">
           <button class="primary" id="smart-start" type="button">整理后朗读</button>
           <button id="original-start" type="button">直接朗读原文</button>
+          <button id="refresh-page" type="button">刷新内容</button>
+          <button id="pick-from-page" type="button" aria-pressed="false">页面定位</button>
           <button id="play-pause" type="button">播放</button>
           <button id="prev" type="button">上一段</button>
           <button id="next" type="button">下一段</button>
@@ -203,6 +220,8 @@ class CatchyReadContent {
     this.root.querySelector<HTMLButtonElement>('#collapse')?.addEventListener('click', () => this.toggleCollapsed());
     this.root.querySelector<HTMLButtonElement>('#smart-start')?.addEventListener('click', () => void this.start('smart'));
     this.root.querySelector<HTMLButtonElement>('#original-start')?.addEventListener('click', () => void this.start('original'));
+    this.root.querySelector<HTMLButtonElement>('#refresh-page')?.addEventListener('click', () => this.refreshPageContent());
+    this.root.querySelector<HTMLButtonElement>('#pick-from-page')?.addEventListener('click', () => this.togglePageSelectionMode());
     this.playPauseButton?.addEventListener('click', () => void this.playPause());
     this.root.querySelector<HTMLButtonElement>('#prev')?.addEventListener('click', () => void this.advance(-1));
     this.root.querySelector<HTMLButtonElement>('#next')?.addEventListener('click', () => void this.advance(1));
@@ -228,7 +247,17 @@ class CatchyReadContent {
     });
 
     this.enableDrag();
-    this.applyCollapsedState(false);
+    this.root.addEventListener('keydown', (event) => this.onRootKeyDown(event));
+    this.applyCollapsedState(false, false);
+    this.cacheRegistry.register('remote-audio', () => this.clearRemoteAudioCaches());
+    this.cacheRegistry.register('smart-segments', () => {
+      this.smartSegments = [];
+    });
+    this.cacheRegistry.register('page-snapshot', () => {
+      this.snapshot = null;
+      this.originalSegments = [];
+      this.currentSegments = [];
+    });
   }
 
   async toggle(): Promise<void> {
@@ -244,14 +273,16 @@ class CatchyReadContent {
     this.host!.style.display = 'block';
     this.open = true;
     await this.loadSettings();
-    this.snapshot = extractPageSnapshot(document);
-    this.rebuildOriginalSegments();
-    this.renderPreview();
-    this.setStatus(`已提取 ${this.snapshot.structuredBlocks.length} 个结构块，请确认后开始朗读。`);
+    this.applyCapabilityConstraints();
+    this.refreshPageContent(false);
+    this.pageRefreshWatcher.start();
   }
 
   private hide(): void {
     this.stopAll();
+    this.pageRefreshWatcher.stop();
+    this.cacheRegistry.clearGroup('remote-audio');
+    this.setPageSelectionMode(false);
     this.host && (this.host.style.display = 'none');
     this.open = false;
     this.clearHighlight();
@@ -259,16 +290,19 @@ class CatchyReadContent {
 
   private toggleCollapsed(): void {
     const nextCollapsed = !this.root?.classList.contains('collapsed');
-    this.applyCollapsedState(nextCollapsed);
+    this.applyCollapsedState(nextCollapsed, true);
   }
 
-  private applyCollapsedState(collapsed: boolean): void {
+  private applyCollapsedState(collapsed: boolean, persist: boolean): void {
     const model = getCollapsedVisibilityModel(collapsed);
     this.root?.classList.toggle('collapsed', !model.showContentControls);
     const collapseButton = this.root?.querySelector<HTMLButtonElement>('#collapse');
     if (collapseButton) {
       collapseButton.textContent = model.collapseButtonLabel;
       collapseButton.setAttribute('aria-expanded', String(model.showContentControls));
+    }
+    if (persist) {
+      this.persistUiState({ collapsed });
     }
   }
 
@@ -284,6 +318,13 @@ class CatchyReadContent {
     this.codeSelect && (this.codeSelect.value = this.currentCodeStrategy);
     this.engineSelect && (this.engineSelect.value = this.currentSpeechEngine);
     this.speedSelect && (this.speedSelect.value = String(result.settings.playback.rate));
+    this.applyCollapsedState(result.settings.ui.collapsed, false);
+    if (this.host && result.settings.ui.x !== null && result.settings.ui.y !== null) {
+      this.host.style.left = `${result.settings.ui.x}px`;
+      this.host.style.top = `${result.settings.ui.y}px`;
+      this.host.style.right = 'auto';
+      this.host.style.bottom = 'auto';
+    }
   }
 
   private rebuildOriginalSegments(): void {
@@ -295,6 +336,47 @@ class CatchyReadContent {
       codeStrategy: this.currentCodeStrategy,
       maxSegmentChars: 220
     });
+  }
+
+  private refreshPageContent(showStatus = true): void {
+    this.cacheRegistry.clearGroup('smart-segments');
+    this.snapshot = extractPageSnapshot(document);
+    this.rebuildOriginalSegments();
+    if (this.currentMode === 'original') {
+      this.currentSegments = this.originalSegments;
+    }
+    this.pageSnapshotStale = false;
+    this.renderPreview();
+    if (showStatus && this.snapshot) {
+      this.setStatus(`内容已刷新，当前提取到 ${this.snapshot.structuredBlocks.length} 个结构块。`);
+    }
+  }
+
+  private markPageStale(): void {
+    if (!this.open) {
+      return;
+    }
+    this.pageSnapshotStale = true;
+    this.setStatus('页面内容已变化，建议点击“刷新内容”重新提取正文。');
+  }
+
+  private applyCapabilityConstraints(): void {
+    const browserOption = this.engineSelect?.querySelector<HTMLOptionElement>('option[value="browser"]');
+    if (browserOption) {
+      browserOption.disabled = !this.capabilities.browserTtsAvailable;
+      browserOption.textContent = this.capabilities.browserTtsAvailable ? '浏览器语音' : '浏览器语音（当前不可用）';
+    }
+
+    if (!this.capabilities.browserTtsAvailable && this.currentSpeechEngine === 'browser') {
+      this.currentSpeechEngine = 'remote';
+      if (this.engineSelect) {
+        this.engineSelect.value = 'remote';
+      }
+    }
+
+    if (!this.capabilities.pointerEventsSupported) {
+      this.setStatus('当前浏览器对拖拽支持有限，但仍可使用朗读与预览功能。');
+    }
   }
 
   private async start(mode: ReadingMode, startIndex = 0): Promise<void> {
@@ -330,7 +412,7 @@ class CatchyReadContent {
     } else {
       this.currentSegments = this.originalSegments;
     }
-    this.remoteAudioCache.clear();
+    this.cacheRegistry.clearGroup('remote-audio');
     this.currentIndex = Math.min(startIndex, Math.max(this.currentSegments.length - 1, 0));
     this.renderPreview();
     await this.playCurrent();
@@ -401,8 +483,8 @@ class CatchyReadContent {
         return;
       }
       try {
-        const audio = await this.getRemoteAudioForIndex(this.currentIndex);
-        this.remoteAudio.src = `data:${audio.mimeType};base64,${audio.base64Audio}`;
+        const objectUrl = await this.getRemoteAudioUrlForIndex(this.currentIndex);
+        this.remoteAudio.src = objectUrl;
         this.remoteAudio.playbackRate = this.settings.playback.rate;
         await this.remoteAudio.play();
         this.speaking = true;
@@ -461,6 +543,7 @@ class CatchyReadContent {
   private stopAll(): void {
     this.remoteAudio.pause();
     this.remoteAudio.removeAttribute('src');
+    this.remoteAudio.load();
     speechSynthesis.cancel();
     this.speaking = false;
     this.updatePlayPauseLabel('播放');
@@ -476,6 +559,7 @@ class CatchyReadContent {
 
   private fail(message: string): void {
     this.stopAll();
+    this.cacheRegistry.clearGroup('remote-audio');
     this.setStatus(message, true);
   }
 
@@ -492,15 +576,29 @@ class CatchyReadContent {
     }
     const segments = this.previewSource();
     this.preview.innerHTML = '';
+    this.preview.setAttribute('role', 'listbox');
+    if (this.pageSnapshotStale) {
+      this.preview.dataset.stale = 'true';
+    } else {
+      delete this.preview.dataset.stale;
+    }
     segments.forEach((segment, index) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = index === this.currentIndex ? 'active' : '';
-      button.innerHTML = `<small>${segment.sectionTitle}</small><span>${segment.spokenText}</span>`;
+      button.setAttribute('role', 'option');
+      button.setAttribute('aria-selected', String(index === this.currentIndex));
+      button.tabIndex = index === this.currentIndex ? 0 : -1;
+      const sectionLabel = document.createElement('small');
+      sectionLabel.textContent = segment.sectionTitle;
+      const spokenText = document.createElement('span');
+      spokenText.textContent = segment.spokenText;
+      button.append(sectionLabel, spokenText);
       button.addEventListener('click', () => {
         this.currentSegments = segments;
         this.currentIndex = index;
         this.renderPreview();
+        button.focus();
         if (this.speaking) {
           void this.playCurrent();
         } else {
@@ -527,14 +625,22 @@ class CatchyReadContent {
   }
 
   private onDocumentClick(event: MouseEvent): void {
-    if (!this.open) {
-      return;
-    }
     const target = event.target;
-    if (!(target instanceof HTMLElement) || target.closest(`#${HOST_ID}`)) {
+    if (!(target instanceof HTMLElement)) {
       return;
     }
+    const clickedInsidePlayer = Boolean(target.closest(`#${HOST_ID}`));
     const source = target.closest<HTMLElement>('[data-catchyread-block-id]');
+    if (
+      !shouldHandlePageSelection({
+        isOpen: this.open,
+        selectionMode: this.pageSelectionMode,
+        clickedInsidePlayer,
+        hasBlockTarget: Boolean(source)
+      })
+    ) {
+      return;
+    }
     if (!source) {
       return;
     }
@@ -542,9 +648,12 @@ class CatchyReadContent {
     const segments = this.previewSource();
     const index = segments.findIndex((item) => item.sourceBlockIds.includes(sourceId));
     if (index >= 0) {
+      event.preventDefault();
+      event.stopPropagation();
       this.currentSegments = segments;
       this.currentIndex = index;
       this.renderPreview();
+      this.setPageSelectionMode(false);
       if (this.speaking) {
         void this.playCurrent();
       } else {
@@ -554,6 +663,9 @@ class CatchyReadContent {
   }
 
   private enableDrag(): void {
+    if (!this.capabilities.pointerEventsSupported) {
+      return;
+    }
     const dragbar = this.root?.querySelector<HTMLElement>('.dragbar');
     if (!dragbar || !this.host) {
       return;
@@ -591,6 +703,13 @@ class CatchyReadContent {
 
     const stop = () => {
       dragging = false;
+      if (this.host) {
+        const rect = this.host.getBoundingClientRect();
+        this.persistUiState({
+          x: Math.round(rect.left),
+          y: Math.round(rect.top)
+        });
+      }
     };
     dragbar.addEventListener('pointerup', stop);
     dragbar.addEventListener('pointercancel', stop);
@@ -603,15 +722,15 @@ class CatchyReadContent {
     return `${segment?.id || 'missing'}::${voice}::${rate}`;
   }
 
-  private async getRemoteAudioForIndex(index: number): Promise<{ mimeType: string; base64Audio: string }> {
+  private async getRemoteAudioForIndex(index: number): Promise<RemoteAudioPayload> {
     const segment = this.currentSegments[index];
     if (!segment || !this.settings) {
       throw new Error('没有可播放的远端语音片段。');
     }
 
     const key = this.remoteCacheKey(index);
-    if (!this.remoteAudioCache.has(key)) {
-      this.remoteAudioCache.set(
+    if (!this.remoteAudioPayloadCache.has(key)) {
+      this.remoteAudioPayloadCache.set(
         key,
         browser
           .runtime
@@ -623,11 +742,25 @@ class CatchyReadContent {
               voiceId: this.settings.providers.tts.voiceId
             }
           } satisfies RuntimeMessage)
-          .then((result) => (result as { audio: { mimeType: string; base64Audio: string } }).audio)
+          .then((result) => (result as { audio: RemoteAudioPayload }).audio)
       );
     }
 
-    return this.remoteAudioCache.get(key)!;
+    return this.remoteAudioPayloadCache.get(key)!;
+  }
+
+  private async getRemoteAudioUrlForIndex(index: number): Promise<string> {
+    const key = this.remoteCacheKey(index);
+    const cachedUrl = this.remoteAudioUrlCache.get(key);
+    if (cachedUrl) {
+      return cachedUrl;
+    }
+
+    const audio = await this.getRemoteAudioForIndex(index);
+    return this.remoteAudioUrlCache.set(
+      key,
+      new Blob([audio.audioBuffer], { type: audio.mimeType })
+    );
   }
 
   private async prefetchRemoteAudio(index: number): Promise<void> {
@@ -638,11 +771,88 @@ class CatchyReadContent {
       return;
     }
     try {
-      await this.getRemoteAudioForIndex(index);
+      await this.getRemoteAudioUrlForIndex(index);
     } catch {
-      this.remoteAudioCache.delete(this.remoteCacheKey(index));
+      this.remoteAudioPayloadCache.delete(this.remoteCacheKey(index));
     }
+  }
+
+  private clearRemoteAudioCaches(): void {
+    this.remoteAudioPayloadCache.clear();
+    this.remoteAudioUrlCache.clear();
+  }
+
+  private togglePageSelectionMode(): void {
+    this.setPageSelectionMode(!this.pageSelectionMode);
+    this.setStatus(this.pageSelectionMode ? '已进入页面定位模式，点击正文任一段即可跳转。' : '已退出页面定位模式。');
+  }
+
+  private setPageSelectionMode(enabled: boolean): void {
+    this.pageSelectionMode = enabled;
+    const button = this.root?.querySelector<HTMLButtonElement>('#pick-from-page');
+    if (button) {
+      button.setAttribute('aria-pressed', String(enabled));
+      button.textContent = enabled ? '退出定位' : '页面定位';
+    }
+  }
+
+  private onRootKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      if (this.pageSelectionMode) {
+        event.preventDefault();
+        this.setPageSelectionMode(false);
+        this.setStatus('已退出页面定位模式。');
+        return;
+      }
+      return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement) || !target.closest('.preview')) {
+      return;
+    }
+
+    const previewButtons = Array.from(this.preview?.querySelectorAll<HTMLButtonElement>('button') || []);
+    const currentPreviewIndex = previewButtons.indexOf(target);
+    if (currentPreviewIndex < 0) {
+      return;
+    }
+
+    const action = resolvePreviewKeyboardAction(event.key, currentPreviewIndex, previewButtons.length);
+    if (!action.handled) {
+      return;
+    }
+
+    event.preventDefault();
+    if (action.nextIndex !== currentPreviewIndex) {
+      previewButtons[action.nextIndex]?.focus();
+      return;
+    }
+    if (action.activate) {
+      target.click();
+    }
+  }
+
+  private persistUiState(partial: Partial<AppSettings['ui']>): void {
+    if (this.persistUiTimer) {
+      clearTimeout(this.persistUiTimer);
+    }
+    this.persistUiTimer = setTimeout(() => {
+      void browser.runtime.sendMessage({
+        type: 'catchyread/save-ui-state',
+        payload: partial
+      } satisfies RuntimeMessage);
+    }, 120);
   }
 }
 
-new CatchyReadContent();
+declare global {
+  interface Window {
+    __CATCHYREAD_CONTENT_READY__?: boolean;
+  }
+}
+
+if (!window.__CATCHYREAD_CONTENT_READY__) {
+  window.__CATCHYREAD_CONTENT_READY__ = true;
+  new CatchyReadContent();
+}

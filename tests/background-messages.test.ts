@@ -15,7 +15,8 @@ describe('handleRuntimeMessage', () => {
         saveSettings: vi.fn(),
         fetchRewriteSegments: vi.fn(),
         fetchRemoteTtsAudio: vi.fn(),
-        testProviderConnectivity: vi.fn()
+        testProviderConnectivity: vi.fn(),
+        updateUiPreferences: vi.fn()
       }
     );
 
@@ -37,7 +38,8 @@ describe('handleRuntimeMessage', () => {
         saveSettings: vi.fn(),
         fetchRewriteSegments: vi.fn(),
         fetchRemoteTtsAudio: vi.fn(),
-        testProviderConnectivity
+        testProviderConnectivity,
+        updateUiPreferences: vi.fn()
       }
     );
 
@@ -46,6 +48,36 @@ describe('handleRuntimeMessage', () => {
       ok: true,
       providerKind: 'llm',
       message: '连通成功'
+    });
+  });
+
+  test('收到保存 UI 状态消息时，只更新 UI 偏好', async () => {
+    const updateUiPreferences = vi.fn().mockResolvedValue({
+      collapsed: true,
+      x: 10,
+      y: 20
+    });
+
+    const result = await handleRuntimeMessage(
+      { type: 'catchyread/save-ui-state', payload: { collapsed: true } } as RuntimeMessage,
+      {
+        openOptionsPage: vi.fn(),
+        loadSettings: vi.fn(),
+        saveSettings: vi.fn(),
+        fetchRewriteSegments: vi.fn(),
+        fetchRemoteTtsAudio: vi.fn(),
+        testProviderConnectivity: vi.fn(),
+        updateUiPreferences
+      }
+    );
+
+    expect(updateUiPreferences).toHaveBeenCalledWith({ collapsed: true });
+    expect(result).toEqual({
+      ui: {
+        collapsed: true,
+        x: 10,
+        y: 20
+      }
     });
   });
 });

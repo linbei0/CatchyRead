@@ -15,6 +15,7 @@ if (!form || !saveButton || !resetButton || !statusElement) {
 
 const settingsForm = form;
 const statusNode = statusElement;
+let currentSettingsSnapshot: AppSettings = DEFAULT_SETTINGS;
 const apiKeyVisibility: Record<'llm' | 'tts', boolean> = {
   llm: false,
   tts: false
@@ -63,6 +64,14 @@ function renderProviderFields(title: string, provider: ProviderConfig, prefix: '
                <input name="${prefix}.voiceId" value="${provider.voiceId || 'alloy'}" />
              </label>`
       }
+      <label style="display:flex; align-items:center; gap:10px; color:#cbd5e1;">
+        <input name="${prefix}.allowInsecureTransport" type="checkbox" ${provider.allowInsecureTransport ? 'checked' : ''} style="width:auto;" />
+        允许 HTTP 端点（仅开发调试）
+      </label>
+      <label style="display:flex; align-items:center; gap:10px; color:#cbd5e1;">
+        <input name="${prefix}.allowPrivateNetwork" type="checkbox" ${provider.allowPrivateNetwork ? 'checked' : ''} style="width:auto;" />
+        允许本地 / 私网端点（仅开发调试）
+      </label>
       <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">
         <button class="secondary test-provider-button" data-provider-kind="${prefix}" type="button">测试${prefix === 'llm' ? 'LLM' : 'TTS'}连接</button>
       </div>
@@ -132,7 +141,9 @@ function readSettingsFromForm(): AppSettings {
         modelOrVoice: String(data.get('llm.modelOrVoice') || ''),
         apiKeyStoredLocally: String(data.get('llm.apiKeyStoredLocally') || ''),
         headers: parseHeaders(String(data.get('llm.headers') || '{}')),
-        temperature: Number(data.get('llm.temperature') || 0.3)
+        temperature: Number(data.get('llm.temperature') || 0.3),
+        allowInsecureTransport: data.get('llm.allowInsecureTransport') === 'on',
+        allowPrivateNetwork: data.get('llm.allowPrivateNetwork') === 'on'
       },
       tts: {
         ...DEFAULT_SETTINGS.providers.tts,
@@ -141,7 +152,9 @@ function readSettingsFromForm(): AppSettings {
         modelOrVoice: String(data.get('tts.modelOrVoice') || ''),
         apiKeyStoredLocally: String(data.get('tts.apiKeyStoredLocally') || ''),
         headers: parseHeaders(String(data.get('tts.headers') || '{}')),
-        voiceId: String(data.get('tts.voiceId') || 'alloy')
+        voiceId: String(data.get('tts.voiceId') || 'alloy'),
+        allowInsecureTransport: data.get('tts.allowInsecureTransport') === 'on',
+        allowPrivateNetwork: data.get('tts.allowPrivateNetwork') === 'on'
       }
     },
     playback: {
@@ -150,12 +163,13 @@ function readSettingsFromForm(): AppSettings {
       codeStrategy: String(data.get('playback.codeStrategy') || 'summary') as AppSettings['playback']['codeStrategy'],
       speechEngine: String(data.get('playback.speechEngine') || 'browser') as AppSettings['playback']['speechEngine']
     },
-    ui: DEFAULT_SETTINGS.ui
+    ui: currentSettingsSnapshot.ui
   };
 }
 
 async function loadAndRender(): Promise<void> {
   const result = (await browser.runtime.sendMessage({ type: 'catchyread/get-settings' })) as { settings: AppSettings };
+  currentSettingsSnapshot = result.settings;
   render(result.settings);
 }
 
@@ -165,6 +179,7 @@ async function saveCurrentSettings(): Promise<AppSettings> {
     type: 'catchyread/save-settings',
     payload: settings
   })) as { settings: AppSettings };
+  currentSettingsSnapshot = result.settings;
   return result.settings;
 }
 

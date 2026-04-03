@@ -2,7 +2,8 @@ import type {
   AppSettings,
   ProviderConfig,
   RewritePolicy,
-  StructuredBlock
+  StructuredBlock,
+  UiPreferences
 } from '@/lib/shared/types';
 
 export type RuntimeMessage =
@@ -10,6 +11,7 @@ export type RuntimeMessage =
   | { type: 'catchyread/open-options' }
   | { type: 'catchyread/get-settings' }
   | { type: 'catchyread/save-settings'; payload: AppSettings }
+  | { type: 'catchyread/save-ui-state'; payload: Partial<UiPreferences> }
   | {
       type: 'catchyread/test-provider';
       payload: {

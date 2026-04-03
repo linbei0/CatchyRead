@@ -43,6 +43,8 @@ export interface ProviderConfig {
   headers?: Record<string, string>;
   temperature?: number;
   voiceId?: string;
+  allowInsecureTransport?: boolean;
+  allowPrivateNetwork?: boolean;
 }
 
 export interface RewritePolicy {
@@ -81,7 +83,7 @@ export interface AppSettings {
 
 export interface RemoteAudioPayload {
   mimeType: string;
-  base64Audio: string;
+  audioBuffer: ArrayBuffer;
 }
 
 export interface PlaybackState {
