@@ -5,6 +5,7 @@ export function createManifest() {
     version: '0.1.0',
     description: '智能提取网页正文，整理后自然朗读的浏览器插件。',
     permissions: ['storage', 'tabs', 'activeTab', 'scripting'],
+    optional_host_permissions: ['https://*/*', 'http://*/*'],
     background: {
       service_worker: 'background.js',
       type: 'module'

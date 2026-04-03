@@ -19,14 +19,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
       allowPrivateNetwork: false
     },
     tts: {
-      providerId: 'openai-compatible-tts',
+      providerId: 'qwen-dashscope-tts',
       kind: 'tts',
       enabled: false,
-      baseUrl: 'https://api.openai.com/v1',
-      modelOrVoice: 'gpt-4o-mini-tts',
+      baseUrl: 'https://dashscope.aliyuncs.com/api/v1',
+      modelOrVoice: 'qwen3-tts-instruct-flash',
       apiKeyStoredLocally: '',
       headers: {},
-      voiceId: 'alloy',
+      voiceId: 'Cherry',
       allowInsecureTransport: false,
       allowPrivateNetwork: false
     }

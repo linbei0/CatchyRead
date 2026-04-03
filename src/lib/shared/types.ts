@@ -82,8 +82,9 @@ export interface AppSettings {
 }
 
 export interface RemoteAudioPayload {
-  mimeType: string;
-  audioBuffer: ArrayBuffer;
+  mimeType?: string;
+  base64Audio?: string;
+  mediaUrl?: string;
 }
 
 export interface PlaybackState {

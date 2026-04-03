@@ -1,6 +1,8 @@
 import browser from 'webextension-polyfill';
 
+import { buildRequiredOriginsForProvider } from '@/lib/permissions/provider-host-access';
 import type { AppSettings, ProviderConfig } from '@/lib/shared/types';
+import { listTtsProviderAdapters } from '@/lib/tts/registry';
 import { DEFAULT_SETTINGS } from '@/lib/storage/settings';
 import { getApiKeyFieldType } from '@/options/uiState';
 
@@ -16,6 +18,7 @@ if (!form || !saveButton || !resetButton || !statusElement) {
 const settingsForm = form;
 const statusNode = statusElement;
 let currentSettingsSnapshot: AppSettings = DEFAULT_SETTINGS;
+const ttsProviderOptions = listTtsProviderAdapters();
 const apiKeyVisibility: Record<'llm' | 'tts', boolean> = {
   llm: false,
   tts: false
@@ -36,9 +39,28 @@ function renderProviderFields(title: string, provider: ProviderConfig, prefix: '
         </select>
       </label>
       <label>
-        Base URL
-        <input name="${prefix}.baseUrl" value="${provider.baseUrl}" />
+        ${prefix === 'tts' ? 'TTS Provider' : 'Base URL'}
+        ${
+          prefix === 'tts'
+            ? `<select name="${prefix}.providerId">
+                 ${ttsProviderOptions
+                   .map(
+                     (item) =>
+                       `<option value="${item.id}" ${provider.providerId === item.id ? 'selected' : ''}>${item.label}</option>`
+                   )
+                   .join('')}
+               </select>`
+            : `<input name="${prefix}.baseUrl" value="${provider.baseUrl}" />`
+        }
       </label>
+      ${
+        prefix === 'tts'
+          ? `<label>
+               Base URL
+               <input name="${prefix}.baseUrl" value="${provider.baseUrl}" />
+             </label>`
+          : ''
+      }
       <label>
         模型名
         <input name="${prefix}.modelOrVoice" value="${provider.modelOrVoice}" />
@@ -147,6 +169,7 @@ function readSettingsFromForm(): AppSettings {
       },
       tts: {
         ...DEFAULT_SETTINGS.providers.tts,
+        providerId: String(data.get('tts.providerId') || DEFAULT_SETTINGS.providers.tts.providerId),
         enabled: data.get('tts.enabled') === 'true',
         baseUrl: String(data.get('tts.baseUrl') || ''),
         modelOrVoice: String(data.get('tts.modelOrVoice') || ''),
@@ -167,6 +190,18 @@ function readSettingsFromForm(): AppSettings {
   };
 }
 
+async function ensureProviderOriginsGranted(provider: ProviderConfig): Promise<void> {
+  const origins = buildRequiredOriginsForProvider(provider);
+  const alreadyGranted = await browser.permissions.contains({ origins });
+  if (alreadyGranted) {
+    return;
+  }
+  const granted = await browser.permissions.request({ origins });
+  if (!granted) {
+    throw new Error(`未授予 ${provider.kind.toUpperCase()} Provider 所需的域名访问权限。`);
+  }
+}
+
 async function loadAndRender(): Promise<void> {
   const result = (await browser.runtime.sendMessage({ type: 'catchyread/get-settings' })) as { settings: AppSettings };
   currentSettingsSnapshot = result.settings;
@@ -175,6 +210,12 @@ async function loadAndRender(): Promise<void> {
 
 async function saveCurrentSettings(): Promise<AppSettings> {
   const settings = readSettingsFromForm();
+  if (settings.providers.llm.enabled) {
+    await ensureProviderOriginsGranted(settings.providers.llm);
+  }
+  if (settings.providers.tts.enabled) {
+    await ensureProviderOriginsGranted(settings.providers.tts);
+  }
   const result = (await browser.runtime.sendMessage({
     type: 'catchyread/save-settings',
     payload: settings
@@ -186,6 +227,8 @@ async function saveCurrentSettings(): Promise<AppSettings> {
 async function testProvider(providerKind: 'llm' | 'tts'): Promise<void> {
   try {
     showStatus(`正在测试 ${providerKind.toUpperCase()} 连接…`);
+    const settings = readSettingsFromForm();
+    await ensureProviderOriginsGranted(providerKind === 'llm' ? settings.providers.llm : settings.providers.tts);
     await saveCurrentSettings();
     const result = (await browser.runtime.sendMessage({
       type: 'catchyread/test-provider',
@@ -224,6 +267,21 @@ settingsForm.addEventListener('change', (event) => {
   if (providerKind === 'llm' || providerKind === 'tts') {
     apiKeyVisibility[providerKind] = target.checked;
     render(readSettingsFromForm());
+    return;
+  }
+
+  if (target instanceof HTMLSelectElement && target.name === 'tts.providerId') {
+    const settings = readSettingsFromForm();
+    if (target.value === 'qwen-dashscope-tts') {
+      settings.providers.tts.baseUrl = 'https://dashscope.aliyuncs.com/api/v1';
+      settings.providers.tts.modelOrVoice = 'qwen3-tts-instruct-flash';
+      settings.providers.tts.voiceId = 'Cherry';
+    } else if (target.value === 'openai-compatible-tts') {
+      settings.providers.tts.baseUrl = 'https://api.openai.com/v1';
+      settings.providers.tts.modelOrVoice = 'gpt-4o-mini-tts';
+      settings.providers.tts.voiceId = 'alloy';
+    }
+    render(settings);
   }
 });
 

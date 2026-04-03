@@ -757,9 +757,22 @@ class CatchyReadContent {
     }
 
     const audio = await this.getRemoteAudioForIndex(index);
+    if (audio.mediaUrl) {
+      return audio.mediaUrl;
+    }
+
+    if (!audio.base64Audio) {
+      throw new Error('远端音频响应既没有 mediaUrl，也没有 base64Audio。');
+    }
+
+    const binary = atob(audio.base64Audio);
+    const bytes = new Uint8Array(binary.length);
+    for (let offset = 0; offset < binary.length; offset += 1) {
+      bytes[offset] = binary.charCodeAt(offset);
+    }
     return this.remoteAudioUrlCache.set(
       key,
-      new Blob([audio.audioBuffer], { type: audio.mimeType })
+      new Blob([bytes.buffer], { type: audio.mimeType || 'audio/mpeg' })
     );
   }
 

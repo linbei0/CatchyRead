@@ -37,6 +37,7 @@ npm run build
 
 - LLM：`baseUrl`、`model`、`apiKey`
 - TTS：`baseUrl`、`model`、`apiKey`、`voice`
+- 默认内置 Qwen DashScope TTS 适配器，也保留 OpenAI-compatible TTS 适配器
 - 如需接本地 `Ollama` / 私网 OpenAI-compatible 服务，需要显式勾选：
   - `允许 HTTP 端点（仅开发调试）`
   - `允许本地 / 私网端点（仅开发调试）`
@@ -45,6 +46,14 @@ npm run build
 
 - LLM：`POST /chat/completions`
 - TTS：`POST /audio/speech`
+
+Qwen DashScope TTS 默认配置：
+
+- Base URL：`https://dashscope.aliyuncs.com/api/v1`
+- Model：`qwen3-tts-instruct-flash`
+- Voice：`Cherry`
+
+首次保存或测试 Provider 时，扩展会请求访问对应远端域名的权限；这是浏览器扩展访问第三方 API 所必需的步骤。
 
 ## 交互说明
 

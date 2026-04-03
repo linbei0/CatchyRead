@@ -5,6 +5,8 @@ import type {
   SmartScriptSegment,
   StructuredBlock
 } from '@/lib/shared/types';
+import { readErrorMessageOnce } from '@/lib/http/response-body';
+import { getTtsProviderAdapter } from '@/lib/tts/registry';
 import { assertSafeProviderConfig } from '@/lib/providers/security';
 
 function trimSlash(value: string): string {
@@ -131,15 +133,6 @@ function readContentField(value: unknown): string {
   return '';
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
-  try {
-    const data = await response.json();
-    return data?.error?.message || JSON.stringify(data);
-  } catch {
-    return await response.text();
-  }
-}
-
 export async function fetchRewriteSegments(
   provider: ProviderConfig,
   blocks: StructuredBlock[],
@@ -153,7 +146,7 @@ export async function fetchRewriteSegments(
   const response = await fetcher(request.url, request.init);
 
   if (!response.ok) {
-    const details = await readErrorMessage(response);
+    const details = await readErrorMessageOnce(response);
     throw new Error(`LLM 请求失败（${response.status}）：${details}`);
   }
 
@@ -208,20 +201,18 @@ export async function fetchRemoteTtsAudio(
   if (!provider.enabled || !provider.apiKeyStoredLocally.trim()) {
     throw new Error('未配置可用的远端 TTS 提供商。');
   }
-
-  const request = buildRemoteTtsRequest(provider, text, options);
+  const adapter = getTtsProviderAdapter(provider.providerId);
+  const request = adapter.buildSynthesisRequest(provider, text, options);
   const response = await fetcher(request.url, request.init);
 
   if (!response.ok) {
-    const details = await readErrorMessage(response);
+    const details = await readErrorMessageOnce(response);
     throw new Error(`TTS 请求失败（${response.status}）：${details}`);
   }
-
-  const buffer = await response.arrayBuffer();
-  return {
-    mimeType: response.headers.get('content-type') || 'audio/mpeg',
-    audioBuffer: buffer
-  };
+  return adapter.parseSynthesisResponse(response, {
+    provider,
+    fetcher
+  });
 }
 
 export async function testProviderConnectivity(
@@ -241,11 +232,14 @@ export async function testProviderConnectivity(
     throw new Error(providerKind === 'llm' ? '请先完整配置并启用 LLM 提供商。' : '请先完整配置并启用 TTS 提供商。');
   }
 
-  const request = providerKind === 'llm' ? buildLlmConnectivityRequest(provider) : buildTtsConnectivityRequest(provider);
+  const request =
+    providerKind === 'llm'
+      ? buildLlmConnectivityRequest(provider)
+      : getTtsProviderAdapter(provider.providerId).buildConnectivityRequest(provider);
   const response = await fetcher(request.url, request.init);
 
   if (!response.ok) {
-    const details = await readErrorMessage(response);
+    const details = await readErrorMessageOnce(response);
     throw new Error(`${providerKind.toUpperCase()} 连通性测试失败（${response.status}）：${details}`);
   }
 
@@ -256,8 +250,11 @@ export async function testProviderConnectivity(
       throw new Error('LLM 连通性测试失败：响应为空。');
     }
   } else {
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength === 0) {
+    const audio = await getTtsProviderAdapter(provider.providerId).parseSynthesisResponse(response, {
+      provider,
+      fetcher
+    });
+    if (!audio.mediaUrl && !audio.base64Audio) {
       throw new Error('TTS 连通性测试失败：返回了空音频。');
     }
   }
