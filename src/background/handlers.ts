@@ -1,3 +1,4 @@
+import type { ProviderTestResult } from '@/lib/shared/types';
 import type { RuntimeMessage } from '@/lib/shared/messages';
 import type { fetchRemoteTtsAudio, fetchRewriteSegments } from '@/lib/providers/openaiCompatible';
 import type { loadSettings, saveSettings } from '@/lib/storage/settings';
@@ -9,11 +10,7 @@ export interface RuntimeMessageDependencies {
   saveSettings: typeof saveSettings;
   fetchRewriteSegments: typeof fetchRewriteSegments;
   fetchRemoteTtsAudio: typeof fetchRemoteTtsAudio;
-  testProviderConnectivity: (providerKind: 'llm' | 'tts') => Promise<{
-    ok: boolean;
-    providerKind: 'llm' | 'tts';
-    message: string;
-  }>;
+  testProviderConnectivity: (providerKind: 'llm' | 'tts') => Promise<ProviderTestResult>;
   updateUiPreferences: typeof updateUiPreferences;
 }
 
@@ -27,6 +24,14 @@ export async function handleRuntimeMessage(
       return { ok: true };
     case 'catchyread/test-provider':
       return deps.testProviderConnectivity(message.payload.providerKind);
+    case 'catchyread/preview-tts-sample': {
+      const settings = await deps.loadSettings();
+      const audio = await deps.fetchRemoteTtsAudio(settings.providers.tts, message.payload.text, {
+        rate: 1,
+        voiceId: settings.providers.tts.voiceId
+      });
+      return { audio };
+    }
     case 'catchyread/save-ui-state':
       return {
         ui: await deps.updateUiPreferences(message.payload)

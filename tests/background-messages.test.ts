@@ -27,7 +27,10 @@ describe('handleRuntimeMessage', () => {
     const testProviderConnectivity = vi.fn().mockResolvedValue({
       ok: true,
       providerKind: 'llm',
-      message: '连通成功'
+      category: 'success',
+      title: '智能整理已连通',
+      message: '现在可以整理网页内容了。',
+      recommendedAction: '回到播放器后可以直接试试“智能整理”。'
     });
 
     const result = await handleRuntimeMessage(
@@ -47,7 +50,10 @@ describe('handleRuntimeMessage', () => {
     expect(result).toEqual({
       ok: true,
       providerKind: 'llm',
-      message: '连通成功'
+      category: 'success',
+      title: '智能整理已连通',
+      message: '现在可以整理网页内容了。',
+      recommendedAction: '回到播放器后可以直接试试“智能整理”。'
     });
   });
 

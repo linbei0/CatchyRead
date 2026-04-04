@@ -1,4 +1,5 @@
 import type {
+  ProviderTestResult,
   ProviderConfig,
   RemoteAudioPayload,
   RewritePolicy,
@@ -8,6 +9,7 @@ import type {
 import { readErrorMessageOnce } from '@/lib/http/response-body';
 import { getTtsProviderAdapter } from '@/lib/tts/registry';
 import { assertSafeProviderConfig } from '@/lib/providers/security';
+import { buildSuccessNotice, mapErrorToNotice, noticeToProviderTestResult } from '@/lib/ui/feedback';
 
 function trimSlash(value: string): string {
   return value.replace(/\/+$/, '');
@@ -220,48 +222,52 @@ export async function testProviderConnectivity(
   loadSettingsFn: () => Promise<{ providers: { llm: ProviderConfig; tts: ProviderConfig } }> = async () =>
     (await import('@/lib/storage/settings')).loadSettings(),
   fetcher: typeof fetch = fetch
-): Promise<{
-  ok: boolean;
-  providerKind: 'llm' | 'tts';
-  message: string;
-}> {
-  const settings = await loadSettingsFn();
-  const provider = providerKind === 'llm' ? settings.providers.llm : settings.providers.tts;
+): Promise<ProviderTestResult> {
+  try {
+    const settings = await loadSettingsFn();
+    const provider = providerKind === 'llm' ? settings.providers.llm : settings.providers.tts;
 
-  if (!provider.enabled || !provider.baseUrl.trim() || !provider.modelOrVoice.trim() || !provider.apiKeyStoredLocally.trim()) {
-    throw new Error(providerKind === 'llm' ? '请先完整配置并启用 LLM 提供商。' : '请先完整配置并启用 TTS 提供商。');
-  }
-
-  const request =
-    providerKind === 'llm'
-      ? buildLlmConnectivityRequest(provider)
-      : getTtsProviderAdapter(provider.providerId).buildConnectivityRequest(provider);
-  const response = await fetcher(request.url, request.init);
-
-  if (!response.ok) {
-    const details = await readErrorMessageOnce(response);
-    throw new Error(`${providerKind.toUpperCase()} 连通性测试失败（${response.status}）：${details}`);
-  }
-
-  if (providerKind === 'llm') {
-    const data = await response.json();
-    const content = readContentField(data?.choices?.[0]?.message?.content);
-    if (!content.trim()) {
-      throw new Error('LLM 连通性测试失败：响应为空。');
+    if (!provider.enabled || !provider.baseUrl.trim() || !provider.modelOrVoice.trim() || !provider.apiKeyStoredLocally.trim()) {
+      throw new Error(providerKind === 'llm' ? '请先完整配置并启用 LLM 提供商。' : '请先完整配置并启用 TTS 提供商。');
     }
-  } else {
-    const audio = await getTtsProviderAdapter(provider.providerId).parseSynthesisResponse(response, {
-      provider,
-      fetcher
-    });
-    if (!audio.mediaUrl && !audio.base64Audio) {
-      throw new Error('TTS 连通性测试失败：返回了空音频。');
-    }
-  }
 
-  return {
-    ok: true,
-    providerKind,
-    message: providerKind === 'llm' ? 'LLM 连通成功，可以正常返回文本。' : 'TTS 连通成功，可以正常返回音频。'
-  };
+    const request =
+      providerKind === 'llm'
+        ? buildLlmConnectivityRequest(provider)
+        : getTtsProviderAdapter(provider.providerId).buildConnectivityRequest(provider);
+    const response = await fetcher(request.url, request.init);
+
+    if (!response.ok) {
+      const details = await readErrorMessageOnce(response);
+      throw new Error(`${providerKind.toUpperCase()} 连通性测试失败（${response.status}）：${details}`);
+    }
+
+    if (providerKind === 'llm') {
+      const data = await response.json();
+      const content = readContentField(data?.choices?.[0]?.message?.content);
+      if (!content.trim()) {
+        throw new Error('LLM 连通性测试失败：响应为空。');
+      }
+    } else {
+      const audio = await getTtsProviderAdapter(provider.providerId).parseSynthesisResponse(response, {
+        provider,
+        fetcher
+      });
+      if (!audio.mediaUrl && !audio.base64Audio) {
+        throw new Error('TTS 连通性测试失败：返回了空音频。');
+      }
+    }
+
+    return noticeToProviderTestResult(
+      providerKind,
+      buildSuccessNotice(
+        providerKind === 'llm' ? '智能整理已连通' : '声音服务已连通',
+        providerKind === 'llm' ? '现在可以整理网页内容了。' : '现在可以直接试听并开始收听。',
+        providerKind === 'llm' ? '回到播放器后可以直接试试“智能整理”。' : '下一步可以点击“试听一下”确认声音效果。'
+      ),
+      true
+    );
+  } catch (error) {
+    return noticeToProviderTestResult(providerKind, mapErrorToNotice(error, { surface: 'options', action: 'test-provider' }), false);
+  }
 }

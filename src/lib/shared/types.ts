@@ -3,6 +3,19 @@ export type SmartSegmentKind = 'main' | 'code-summary' | 'warning';
 export type ReadingMode = 'original' | 'smart';
 export type CodeStrategy = 'summary' | 'full';
 export type SpeechEngine = 'browser' | 'remote';
+export type PlaybackStatus = 'idle' | 'preparing' | 'playing' | 'paused' | 'error';
+export type PlaybackProgressMode = 'segment-only' | 'media-time';
+export type UserNoticeCategory =
+  | 'info'
+  | 'success'
+  | 'incomplete-config'
+  | 'permission-denied'
+  | 'network'
+  | 'provider-rejected'
+  | 'invalid-response'
+  | 'audio-playback'
+  | 'browser-unsupported'
+  | 'unknown';
 
 export interface StructuredBlock {
   id: string;
@@ -87,11 +100,37 @@ export interface RemoteAudioPayload {
   mediaUrl?: string;
 }
 
+export interface UserNotice {
+  category: UserNoticeCategory;
+  title: string;
+  message: string;
+  recommendedAction: string;
+  debugDetails?: string;
+  canRetry?: boolean;
+}
+
 export interface PlaybackState {
-  status: 'idle' | 'loading' | 'playing' | 'paused' | 'error';
+  status: PlaybackStatus;
   currentSegmentId: string | null;
+  currentIndex: number;
+  totalSegments: number;
   rate: number;
   voiceId: string;
   mode: ReadingMode;
   speechEngine: SpeechEngine;
+  progressMode: PlaybackProgressMode;
+  currentTimeSeconds?: number;
+  durationSeconds?: number;
+  notice: UserNotice | null;
+}
+
+export interface ProviderTestResult {
+  ok: boolean;
+  providerKind: 'llm' | 'tts';
+  category: UserNoticeCategory;
+  title: string;
+  message: string;
+  recommendedAction: string;
+  debugDetails?: string;
+  canRetry?: boolean;
 }

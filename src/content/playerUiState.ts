@@ -1,13 +1,17 @@
 export interface CollapsedVisibilityModel {
   showToolbar: boolean;
-  showContentControls: boolean;
+  showTransport: boolean;
+  showQueue: boolean;
+  showSecondaryControls: boolean;
   collapseButtonLabel: string;
 }
 
 export function getCollapsedVisibilityModel(collapsed: boolean): CollapsedVisibilityModel {
   return {
     showToolbar: true,
-    showContentControls: !collapsed,
+    showTransport: true,
+    showQueue: !collapsed,
+    showSecondaryControls: !collapsed,
     collapseButtonLabel: collapsed ? '展开' : '折叠'
   };
 }

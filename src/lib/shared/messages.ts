@@ -1,7 +1,9 @@
 import type {
   AppSettings,
+  ProviderTestResult,
   ProviderConfig,
   RewritePolicy,
+  RemoteAudioPayload,
   StructuredBlock,
   UiPreferences
 } from '@/lib/shared/types';
@@ -19,6 +21,12 @@ export type RuntimeMessage =
       };
     }
   | {
+      type: 'catchyread/preview-tts-sample';
+      payload: {
+        text: string;
+      };
+    }
+  | {
       type: 'catchyread/rewrite';
       payload: {
         blocks: StructuredBlock[];
@@ -33,6 +41,11 @@ export type RuntimeMessage =
         voiceId?: string;
       };
     };
+
+export interface ProviderTestMessageResult extends ProviderTestResult {}
+export interface TtsPreviewMessageResult {
+  audio: RemoteAudioPayload;
+}
 
 export function isProviderConfigured(provider: ProviderConfig): boolean {
   return Boolean(provider.enabled && provider.baseUrl.trim() && provider.modelOrVoice.trim() && provider.apiKeyStoredLocally.trim());
