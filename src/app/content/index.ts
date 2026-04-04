@@ -82,8 +82,9 @@ class ContentApp {
   private settings: AppSettings | null = null;
   private snapshot: PageSnapshot | null = null;
   private originalSegments: SmartScriptSegment[] = [];
-  private smartSegments: SmartScriptSegment[] = [];
-  private currentSegments: SmartScriptSegment[] = [];
+  private smartRewriteResult: { requestId: string; snapshotRevision: number; segments: SmartScriptSegment[] } | null = null;
+  private snapshotRevision = 0;
+  private activeRewriteRequestId: string | null = null;
   private currentIndex = 0;
   private currentMode: ReadingMode = 'smart';
   private currentCodeStrategy: CodeStrategy = 'summary';
@@ -112,7 +113,7 @@ class ContentApp {
   constructor() {
     this.cacheRegistry.register('remote-audio', () => this.clearRemoteAudioCaches());
     this.cacheRegistry.register('smart-segments', () => {
-      this.smartSegments = [];
+      this.smartRewriteResult = null;
     });
     this.bindViewEvents();
     this.selection.bindDocumentSelection({
@@ -120,7 +121,6 @@ class ContentApp {
       isSelectionMode: () => this.pageSelectionMode,
       getSegments: () => this.previewSource(),
       onPick: (index) => {
-        this.currentSegments = this.previewSource();
         this.currentIndex = index;
         this.renderPreview();
         this.setPageSelectionMode(false);
@@ -155,12 +155,17 @@ class ContentApp {
     this.view.on('next', () => void this.advance(1));
     this.view.on('openSettings', () => void this.gateway.openOptions());
     this.view.on('modeChange', (mode: ReadingMode) => {
+      if (mode !== 'smart') {
+        this.cancelActiveRewrite('Rewrite cancelled because user switched mode.');
+      }
       this.currentMode = mode;
       this.playbackState.mode = mode;
       this.renderPreview();
     });
     this.view.on('codeStrategyChange', (codeStrategy: CodeStrategy) => {
       this.currentCodeStrategy = codeStrategy;
+      this.cancelActiveRewrite('Rewrite cancelled because code strategy changed.');
+      this.cacheRegistry.clearGroup('smart-segments');
       if (this.snapshot) {
         this.originalSegments = this.snapshotService.buildOriginalSegments(this.snapshot, codeStrategy);
       }
@@ -185,7 +190,6 @@ class ContentApp {
       this.renderPlaybackChrome();
     });
     this.view.on('previewSelect', (index: number) => {
-      this.currentSegments = this.previewSource();
       this.currentIndex = index;
       this.renderPreview();
       this.view.focusPreview(index);
@@ -224,6 +228,7 @@ class ContentApp {
 
   private hide(): void {
     this.stopAll();
+    this.cancelActiveRewrite('Rewrite cancelled because player closed.');
     this.pageRefreshWatcher.stop();
     this.cacheRegistry.clearGroup('remote-audio');
     this.setPageSelectionMode(false);
@@ -258,13 +263,13 @@ class ContentApp {
   }
 
   private refreshPageContent(showStatus = true): void {
+    this.cancelActiveRewrite('Rewrite cancelled because page content refreshed.');
     this.cacheRegistry.clearGroup('smart-segments');
     const refreshed = this.snapshotService.refresh(document, this.currentCodeStrategy);
+    this.snapshotRevision += 1;
     this.snapshot = refreshed.snapshot;
     this.originalSegments = refreshed.originalSegments;
-    if (this.currentMode === 'original') {
-      this.currentSegments = this.originalSegments;
-    }
+    this.currentIndex = Math.min(this.currentIndex, Math.max(this.previewSource().length - 1, 0));
     this.pageSnapshotStale = false;
     this.renderPreview();
     if (showStatus && this.snapshot) {
@@ -332,22 +337,48 @@ class ContentApp {
         recommendedAction: '稍等片刻，整理完成后会自动开始播放。'
       });
       try {
-        this.smartSegments = await this.gateway.rewrite(this.snapshot.structuredBlocks, {
-          preserveFacts: true,
-          tone: 'podcast-lite',
-          maxSegmentChars: 220,
-          codeStrategy: this.currentCodeStrategy
-        });
-        this.currentSegments = this.smartSegments;
+        if (!this.hasCurrentSmartRewrite()) {
+          const requestId = this.createRewriteRequestId();
+          const snapshotRevision = this.snapshotRevision;
+          this.activeRewriteRequestId = requestId;
+          const segments = await this.gateway.rewrite({
+            snapshot: this.snapshot,
+            canonicalBlocks: this.snapshot.structuredBlocks,
+            requestId,
+            snapshotRevision,
+            policy: {
+              preserveFacts: true,
+              tone: 'podcast-lite',
+              maxSegmentChars: 220,
+              codeStrategy: this.currentCodeStrategy,
+              outputLanguage: this.settings.playback.outputLanguage ?? 'follow-page',
+              outputLocale: this.settings.playback.outputLocale ?? 'zh-CN',
+              uiLanguage: navigator.language
+            }
+          });
+          if (!this.shouldCommitRewriteResult(requestId, snapshotRevision)) {
+            return;
+          }
+          this.smartRewriteResult = {
+            requestId,
+            snapshotRevision,
+            segments
+          };
+          this.activeRewriteRequestId = null;
+        }
       } catch (error) {
+        if (!this.isRewriteStillActive()) {
+          return;
+        }
+        this.activeRewriteRequestId = null;
         this.fail(error);
         return;
       }
     } else {
-      this.currentSegments = this.originalSegments;
+      this.cancelActiveRewrite('Rewrite cancelled because original mode started.');
     }
     this.cacheRegistry.clearGroup('remote-audio');
-    this.currentIndex = Math.min(startIndex, Math.max(this.currentSegments.length - 1, 0));
+    this.currentIndex = Math.min(startIndex, Math.max(this.playbackSource().length - 1, 0));
     this.renderPreview();
     await this.playCurrent();
   }
@@ -355,9 +386,9 @@ class ContentApp {
   private async playPause(): Promise<void> {
     const preparation = resolvePlaybackPreparation({
       mode: this.currentMode,
-      currentSegments: this.currentSegments,
+      currentSegments: this.playbackSource(),
       originalSegments: this.originalSegments,
-      smartSegments: this.smartSegments
+      smartSegments: this.currentSmartSegments()
     });
 
     if (preparation === 'prepare-smart') {
@@ -407,7 +438,8 @@ class ContentApp {
   }
 
   private async playCurrent(): Promise<void> {
-    const segment = this.currentSegments[this.currentIndex];
+    const segments = this.playbackSource();
+    const segment = segments[this.currentIndex];
     if (!segment || !this.settings) {
       this.setNotice({
         category: 'incomplete-config',
@@ -423,7 +455,7 @@ class ContentApp {
     this.selection.highlight(segment);
     this.playbackState.currentSegmentId = segment.id;
     this.playbackState.currentIndex = this.currentIndex;
-    this.playbackState.totalSegments = this.currentSegments.length;
+    this.playbackState.totalSegments = segments.length;
     this.playbackState.rate = this.settings.playback.rate;
     this.playbackState.voiceId = this.settings.providers.tts.voiceId || 'default';
     this.setNotice({
@@ -464,7 +496,8 @@ class ContentApp {
   }
 
   private async advance(step: number): Promise<void> {
-    if (!this.currentSegments.length) {
+    const segments = this.playbackSource();
+    if (!segments.length) {
       return;
     }
     const nextIndex = this.currentIndex + step;
@@ -479,9 +512,9 @@ class ContentApp {
       });
       return;
     }
-    if (nextIndex >= this.currentSegments.length) {
+    if (nextIndex >= segments.length) {
       this.stopAll();
-      this.currentIndex = this.currentSegments.length - 1;
+      this.currentIndex = segments.length - 1;
       this.renderPreview();
       this.setNotice(buildSuccessNotice('已经听到最后', '这一页的段落已经播放到结尾。', '如果还想重听，直接点任意段落即可。'));
       return;
@@ -501,14 +534,15 @@ class ContentApp {
   }
 
   private fail(error: unknown): void {
+    this.cancelActiveRewrite('Rewrite cancelled because current flow failed.');
     this.stopAll();
     this.cacheRegistry.clearGroup('remote-audio');
     this.setNotice(mapErrorToNotice(error, { surface: 'player', action: 'playback' }), 'error');
   }
 
   private previewSource(): SmartScriptSegment[] {
-    if (this.currentMode === 'smart' && this.smartSegments.length) {
-      return this.smartSegments;
+    if (this.currentMode === 'smart' && this.hasCurrentSmartRewrite()) {
+      return this.smartRewriteResult?.segments || [];
     }
     return this.originalSegments;
   }
@@ -527,7 +561,7 @@ class ContentApp {
   }
 
   private renderPlaybackChrome(): void {
-    const segments = this.currentSegments.length ? this.currentSegments : this.previewSource();
+    const segments = this.playbackSource();
     const viewState = buildPlaybackViewState({
       segments,
       currentIndex: Math.min(this.currentIndex, Math.max(segments.length - 1, 0)),
@@ -733,14 +767,14 @@ class ContentApp {
   }
 
   private remoteCacheKey(index: number): string {
-    const segment = this.currentSegments[index];
+    const segment = this.playbackSource()[index];
     const voice = this.settings?.providers.tts.voiceId || 'default';
     const rate = this.settings?.playback.rate || 1;
     return `${segment?.id || 'missing'}::${voice}::${rate}`;
   }
 
   private async getRemoteAudioForIndex(index: number): Promise<RemoteAudioPayload> {
-    const segment = this.currentSegments[index];
+    const segment = this.playbackSource()[index];
     if (!segment || !this.settings) {
       throw new Error('没有可播放的远端语音片段。');
     }
@@ -779,7 +813,7 @@ class ContentApp {
     if (this.currentSpeechEngine !== 'remote' || !this.settings || !isProviderConfigured(this.settings.providers.tts)) {
       return;
     }
-    if (index < 0 || index >= this.currentSegments.length) {
+    if (index < 0 || index >= this.playbackSource().length) {
       return;
     }
     try {
@@ -787,6 +821,52 @@ class ContentApp {
     } catch {
       this.remoteAudioPayloadCache.delete(this.remoteCacheKey(index));
     }
+  }
+
+  private currentSmartSegments(): SmartScriptSegment[] {
+    return this.hasCurrentSmartRewrite() ? this.smartRewriteResult?.segments || [] : [];
+  }
+
+  private playbackSource(): SmartScriptSegment[] {
+    return this.previewSource();
+  }
+
+  private hasCurrentSmartRewrite(): boolean {
+    return Boolean(this.smartRewriteResult && this.smartRewriteResult.snapshotRevision === this.snapshotRevision);
+  }
+
+  private createRewriteRequestId(): string {
+    return `rewrite-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  }
+
+  private shouldCommitRewriteResult(requestId: string, snapshotRevision: number): boolean {
+    return this.activeRewriteRequestId === requestId && this.snapshotRevision === snapshotRevision;
+  }
+
+  private isRewriteStillActive(): boolean {
+    return Boolean(this.activeRewriteRequestId);
+  }
+
+  private cancelActiveRewrite(reason: string): void {
+    const activeRewriteRequestId = this.activeRewriteRequestId;
+    if (!activeRewriteRequestId) {
+      return;
+    }
+    this.activeRewriteRequestId = null;
+    void this.gateway.cancelRewrite(activeRewriteRequestId).catch(() => {
+      // 这里不能再抛错，否则会把后续真正的用户操作打断。
+    });
+    this.setNotice(
+      {
+        category: 'rewrite-cancelled',
+        title: '智能整理已取消',
+        message: '上一轮整理结果不会再覆盖当前页面状态。',
+        recommendedAction: '如需继续，请重新点击“智能整理”。',
+        debugDetails: reason,
+        canRetry: true
+      },
+      this.playbackState.status === 'error' ? 'error' : 'idle'
+    );
   }
 
   private clearRemoteAudioCaches(): void {

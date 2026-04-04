@@ -62,17 +62,71 @@ export function mapErrorToNotice(error: unknown, context: NoticeContext): UserNo
   }
 
   if (
+    lowered.includes('rewrite cancelled') ||
+    lowered.includes('cancelled by newer request') ||
+    lowered.includes('task cancelled')
+  ) {
+    return buildNotice(
+      'rewrite-cancelled',
+      '智能整理已取消',
+      '当前整理任务已经被新的操作替换，不会再覆盖最新页面状态。',
+      '如果还需要整理当前页面，请重新点击“智能整理”。',
+      raw,
+      true
+    );
+  }
+
+  if (
+    lowered.includes('alignment failed') ||
+    lowered.includes('sourceblockids 非法') ||
+    lowered.includes('sourceblockids 顺序逆序')
+  ) {
+    return buildNotice(
+      'rewrite-alignment-failed',
+      '整理结果无法对齐页面',
+      '模型返回了无法映射到当前页面的段落来源，所以这次结果不可信。',
+      '请刷新内容后重试；如果反复出现，检查 Provider 的兼容性设置。',
+      raw,
+      true
+    );
+  }
+
+  if (
+    lowered.includes('smart segment') ||
+    lowered.includes('缺少 segments 数组') ||
+    lowered.includes('格式不正确')
+  ) {
+    return buildNotice(
+      'rewrite-invalid-response',
+      '智能整理返回格式不正确',
+      '服务返回了内容，但结构或字段不符合播放器要求。',
+      '优先检查模型是否支持结构化输出，或改用兼容性更好的 Provider。',
+      raw,
+      true
+    );
+  }
+
+  if (
     lowered.includes('failed to fetch') ||
     lowered.includes('networkerror') ||
-    lowered.includes('网络') ||
-    lowered.includes('timeout') ||
-    lowered.includes('timed out')
+    lowered.includes('网络')
   ) {
     return buildNotice(
       'network',
       '网络连接失败',
       '请求已经发出，但服务没有顺利返回结果。',
       '检查网络、代理或服务地址是否可达，然后重试。',
+      raw,
+      true
+    );
+  }
+
+  if (lowered.includes('timeout') || lowered.includes('timed out')) {
+    return buildNotice(
+      'rewrite-timeout',
+      '智能整理超时',
+      '请求已经发出，但智能整理在等待时间内没有完成。',
+      '优先减少页面噪音、检查代理与模型延迟，然后重试。',
       raw,
       true
     );

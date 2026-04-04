@@ -3,6 +3,8 @@ export type SmartSegmentKind = 'main' | 'code-summary' | 'warning';
 export type ReadingMode = 'original' | 'smart';
 export type CodeStrategy = 'summary' | 'full' | 'skip';
 export type SpeechEngine = 'browser' | 'remote';
+export type RewriteOutputLanguage = 'follow-page' | 'follow-ui' | 'explicit-locale';
+export type BlockPriority = 'critical' | 'normal' | 'supporting';
 export type PlaybackStatus = 'idle' | 'preparing' | 'playing' | 'paused' | 'error';
 export type PlaybackProgressMode = 'segment-only' | 'media-time';
 export type UserNoticeCategory =
@@ -11,6 +13,10 @@ export type UserNoticeCategory =
   | 'incomplete-config'
   | 'permission-denied'
   | 'network'
+  | 'rewrite-timeout'
+  | 'rewrite-invalid-response'
+  | 'rewrite-alignment-failed'
+  | 'rewrite-cancelled'
   | 'provider-rejected'
   | 'invalid-response'
   | 'audio-playback'
@@ -19,10 +25,14 @@ export type UserNoticeCategory =
 
 export interface StructuredBlock {
   id: string;
+  canonicalBlockId?: string;
   type: StructuredBlockType;
   text: string;
   sourceElementId: string;
   level?: number;
+  headingPath?: string[];
+  priority?: BlockPriority;
+  isWarningLike?: boolean;
   metadata?: {
     language?: string;
     label?: string;
@@ -35,6 +45,8 @@ export interface PageSnapshot {
   language: string;
   capturedAt: string;
   excerpt?: string;
+  siteName?: string;
+  byline?: string;
   structuredBlocks: StructuredBlock[];
 }
 
@@ -65,6 +77,17 @@ export interface RewritePolicy {
   tone: string;
   maxSegmentChars?: number;
   codeStrategy?: CodeStrategy;
+  outputLanguage: RewriteOutputLanguage;
+  outputLocale?: string;
+  uiLanguage?: string;
+}
+
+export interface RewriteRequestPayload {
+  snapshot: PageSnapshot;
+  canonicalBlocks: StructuredBlock[];
+  policy: RewritePolicy;
+  requestId: string;
+  snapshotRevision: number;
 }
 
 export interface SegmentBuildOptions {
@@ -78,6 +101,8 @@ export interface PlaybackPreferences {
   mode: ReadingMode;
   codeStrategy: CodeStrategy;
   speechEngine: SpeechEngine;
+  outputLanguage?: RewriteOutputLanguage;
+  outputLocale?: string;
 }
 
 export interface UiPreferences {
@@ -134,4 +159,5 @@ export interface ProviderTestResult {
   recommendedAction: string;
   debugDetails?: string;
   canRetry?: boolean;
+  supportsStructuredOutputs?: boolean;
 }

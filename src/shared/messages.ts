@@ -3,8 +3,7 @@ import type {
   ProviderConfig,
   ProviderTestResult,
   RemoteAudioPayload,
-  RewritePolicy,
-  StructuredBlock,
+  RewriteRequestPayload,
   UiPreferences
 } from '@/shared/types';
 
@@ -28,9 +27,12 @@ export type RuntimeMessage =
     }
   | {
       type: 'catchyread/rewrite';
+      payload: RewriteRequestPayload;
+    }
+  | {
+      type: 'catchyread/cancel-rewrite';
       payload: {
-        blocks: StructuredBlock[];
-        policy: RewritePolicy;
+        requestId: string;
       };
     }
   | {

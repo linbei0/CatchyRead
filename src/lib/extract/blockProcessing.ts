@@ -85,9 +85,9 @@ export function buildSpokenSegments(blocks: StructuredBlock[], options: SegmentB
     pieces.forEach((piece, index) => {
       segments.push({
         id: `${block.id}-segment-${index + 1}`,
-        sectionTitle: currentSectionTitle,
+        sectionTitle: block.headingPath?.at(-1) || currentSectionTitle,
         spokenText: piece,
-        sourceBlockIds: [block.sourceElementId],
+        sourceBlockIds: [block.canonicalBlockId || block.sourceElementId],
         kind
       });
     });

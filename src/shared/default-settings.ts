@@ -31,7 +31,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     rate: 1,
     mode: 'smart',
     codeStrategy: 'summary',
-    speechEngine: 'browser'
+    speechEngine: 'browser',
+    outputLanguage: 'follow-page',
+    outputLocale: 'zh-CN'
   },
   ui: {
     collapsed: false,

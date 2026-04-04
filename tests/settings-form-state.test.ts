@@ -39,7 +39,9 @@ const settings: AppSettings = {
     rate: 1.2,
     mode: 'original',
     codeStrategy: 'full',
-    speechEngine: 'remote'
+    speechEngine: 'remote',
+    outputLanguage: 'follow-ui',
+    outputLocale: 'zh-CN'
   },
   ui: {
     collapsed: true,
@@ -56,6 +58,7 @@ describe('settings-form-state', () => {
     expect(state.tts.headersText).toContain('"X-TTS"');
     expect(state.llm.temperature).toBe(0.5);
     expect(state.playback.mode).toBe('original');
+    expect(state.playback.outputLanguage).toBe('follow-ui');
   });
 
   test('从表单读取时恢复 AppSettings 并保留 UI 偏好', () => {
@@ -81,6 +84,8 @@ describe('settings-form-state', () => {
         <select name="playback.mode"><option value="original" selected>原文</option></select>
         <select name="playback.codeStrategy"><option value="full" selected>全文</option></select>
         <select name="playback.speechEngine"><option value="remote" selected>远端</option></select>
+        <select name="playback.outputLanguage"><option value="explicit-locale" selected>指定语言</option></select>
+        <input name="playback.outputLocale" value="en-US" />
         <input name="playback.rate" value="1.2" />
       </form>
     `);
@@ -95,6 +100,8 @@ describe('settings-form-state', () => {
     expect(restored.providers.llm.headers).toEqual({ 'X-Test': '1' });
     expect(restored.providers.tts.voiceId).toBe('Cherry');
     expect(restored.playback.speechEngine).toBe('remote');
+    expect(restored.playback.outputLanguage).toBe('explicit-locale');
+    expect(restored.playback.outputLocale).toBe('en-US');
     expect(restored.ui).toEqual(settings.ui);
   });
 
@@ -104,6 +111,7 @@ describe('settings-form-state', () => {
     expect(formState.playback.rate).toBe('1.2');
     expect(formState.playback.codeStrategy).toBe('full');
     expect(formState.llm.allowPrivateNetwork).toBe(true);
+    expect(formState.playback.outputLocale).toBe('zh-CN');
   });
 
   test('支持读取与回填跳过代码策略', () => {
@@ -136,6 +144,8 @@ describe('settings-form-state', () => {
         <select name="playback.mode"><option value="original" selected>原文</option></select>
         <select name="playback.codeStrategy"><option value="skip" selected>跳过代码</option></select>
         <select name="playback.speechEngine"><option value="browser" selected>浏览器</option></select>
+        <select name="playback.outputLanguage"><option value="follow-page" selected>跟随页面</option></select>
+        <input name="playback.outputLocale" value="zh-CN" />
         <input name="playback.rate" value="1" />
       </form>
     `);
@@ -146,5 +156,6 @@ describe('settings-form-state', () => {
 
     const restored = readSettingsFromForm(form, settings.ui);
     expect(restored.playback.codeStrategy).toBe('skip');
+    expect(restored.playback.outputLanguage).toBe('follow-page');
   });
 });

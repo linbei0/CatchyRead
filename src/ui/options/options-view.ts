@@ -65,7 +65,7 @@ export class OptionsView {
         ? 'success'
         : ['permission-denied', 'network', 'provider-rejected', 'invalid-response', 'audio-playback', 'browser-unsupported', 'unknown'].includes(
               notice.category
-            )
+            ) || ['rewrite-timeout', 'rewrite-invalid-response', 'rewrite-alignment-failed', 'rewrite-cancelled'].includes(notice.category)
           ? 'danger'
           : 'default';
     this.statusNode.dataset.tone = tone;
@@ -159,6 +159,14 @@ export class OptionsView {
                   <option value="skip" ${formState.playback.codeStrategy === 'skip' ? 'selected' : ''}>跳过代码</option>
                 </select>
               </label>
+              <label>整理输出语言
+                <select name="playback.outputLanguage">
+                  <option value="follow-page" ${formState.playback.outputLanguage === 'follow-page' ? 'selected' : ''}>跟随页面语言</option>
+                  <option value="follow-ui" ${formState.playback.outputLanguage === 'follow-ui' ? 'selected' : ''}>跟随界面语言</option>
+                  <option value="explicit-locale" ${formState.playback.outputLanguage === 'explicit-locale' ? 'selected' : ''}>指定语言</option>
+                </select>
+              </label>
+              <label>指定整理语言<input name="playback.outputLocale" value="${escapeHtml(formState.playback.outputLocale)}" placeholder="zh-CN / en-US" /></label>
               <label>默认倍速<input name="playback.rate" type="number" min="0.5" max="2" step="0.1" value="${formState.playback.rate}" /></label>
             </div>
           </article>

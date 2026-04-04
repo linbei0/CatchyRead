@@ -27,7 +27,8 @@ export async function handleRuntimeMessage(
     update: deps.updateUiPreferences
   };
   const providerGateway: ProviderGateway = {
-    rewrite: (provider, payload) => deps.fetchRewriteSegments(provider, payload.blocks, payload.policy),
+    rewrite: (provider, payload) => deps.fetchRewriteSegments(provider, payload),
+    cancelRewrite: async () => {},
     synthesizeRemote: (provider, payload) =>
       deps.fetchRemoteTtsAudio(provider, payload.text, {
         voiceId: payload.voiceId,

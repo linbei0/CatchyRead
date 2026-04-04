@@ -23,8 +23,16 @@ const NOISE_SELECTOR = [
   '.share',
   '.social',
   '.toc',
+  '.table-of-contents',
+  '.contents',
+  '.pagination',
+  '.pager',
+  '.recommendations',
+  '.recommended',
   '.newsletter',
-  '.copyright'
+  '.copyright',
+  '[data-testid*="toc"]',
+  '[aria-label*="breadcrumb"]'
 ].join(', ');
 
 function normalizeText(text: string): string {
@@ -40,18 +48,30 @@ function normalizeCode(text: string): string {
     .trim();
 }
 
-function getReadabilityReference(document: Document): { title: string; excerpt: string } {
+function getReadabilityReference(document: Document): {
+  title: string;
+  excerpt: string;
+  siteName?: string;
+  byline?: string;
+  language?: string;
+} {
   try {
     const clonedDocument = document.cloneNode(true) as Document;
     const article = new Readability(clonedDocument).parse();
     return {
       title: article?.title?.trim() || document.title.trim() || '未命名网页',
-      excerpt: normalizeText(article?.textContent || '')
+      excerpt: normalizeText(article?.excerpt || article?.textContent || ''),
+      siteName: article?.siteName?.trim() || undefined,
+      byline: article?.byline?.trim() || undefined,
+      language: article?.lang?.trim() || undefined
     };
   } catch {
     return {
       title: document.title.trim() || '未命名网页',
-      excerpt: ''
+      excerpt: '',
+      siteName: undefined,
+      byline: undefined,
+      language: undefined
     };
   }
 }
@@ -115,6 +135,9 @@ function shouldSkip(element: Element): boolean {
   }
 
   const text = element.tagName.toLowerCase() === 'pre' ? normalizeCode(element.textContent || '') : normalizeText(element.textContent || '');
+  if (/^(目录|相关文章|相关阅读|you may also like|related articles|share this|上一篇|下一篇)$/i.test(text)) {
+    return true;
+  }
   return text.length < 8;
 }
 
@@ -124,7 +147,20 @@ function extractLanguage(element: Element): string | undefined {
   return langMatch?.[1];
 }
 
-function buildBlock(element: Element, index: number): StructuredBlock | null {
+function inferPriority(text: string, isWarningLike: boolean): StructuredBlock['priority'] {
+  if (isWarningLike) {
+    return 'critical';
+  }
+  if (/^(总结|结论|限制|限制条件|注意事项|caveat|limitation|conclusion)/i.test(text)) {
+    return 'critical';
+  }
+  if (text.length < 48) {
+    return 'supporting';
+  }
+  return 'normal';
+}
+
+function buildBlock(element: Element, index: number, headingPath: string[]): StructuredBlock | null {
   const type = inferType(element);
   const text = type === 'code' ? normalizeCode(element.textContent || '') : normalizeText(element.textContent || '');
   if (!text) {
@@ -133,35 +169,52 @@ function buildBlock(element: Element, index: number): StructuredBlock | null {
 
   const sourceElementId = element.getAttribute('data-catchyread-block-id') || `catchyread-block-${index + 1}`;
   element.setAttribute('data-catchyread-block-id', sourceElementId);
+  const isWarningLike = type === 'note' || /^(注意|警告|warning|caution|danger|important)/i.test(text);
 
   return {
     id: `${type}-${index + 1}`,
+    canonicalBlockId: sourceElementId,
     type,
     text,
     sourceElementId,
     level: type === 'heading' ? Number(element.tagName[1]) : undefined,
+    headingPath,
+    priority: inferPriority(text, isWarningLike),
+    isWarningLike,
     metadata: type === 'code' ? { language: extractLanguage(element) } : undefined
   };
 }
 
 function extractBlocks(root: Element): StructuredBlock[] {
+  const headingPath: string[] = [];
+
   return Array.from(root.querySelectorAll(BLOCK_SELECTOR))
     .filter((element) => !shouldSkip(element))
-    .map((element, index) => buildBlock(element, index))
+    .map((element, index) => {
+      const type = inferType(element);
+      if (type === 'heading') {
+        const level = Number(element.tagName[1]);
+        headingPath.length = Math.max(0, level - 1);
+        headingPath[level - 1] = normalizeText(element.textContent || '') || '未命名章节';
+      }
+      return buildBlock(element, index, [...headingPath.filter(Boolean)]);
+    })
     .filter((item): item is StructuredBlock => Boolean(item));
 }
 
 export function extractPageSnapshot(document: Document): PageSnapshot {
-  const { title, excerpt } = getReadabilityReference(document);
+  const { title, excerpt, siteName, byline, language } = getReadabilityReference(document);
   const root = findContentRoot(document, excerpt);
   const structuredBlocks = extractBlocks(root);
 
   return {
     url: document.location?.href || '',
     title,
-    language: document.documentElement.lang || 'zh-CN',
+    language: document.documentElement.lang || language || navigator.language || 'zh-CN',
     capturedAt: new Date().toISOString(),
     excerpt,
+    siteName,
+    byline,
     structuredBlocks
   };
 }

@@ -12,6 +12,7 @@ export interface UiPreferencesRepository {
 
 export interface ProviderGateway {
   rewrite(provider: ProviderConfig, message: Extract<RuntimeMessage, { type: 'catchyread/rewrite' }>['payload']): Promise<SmartScriptSegment[]>;
+  cancelRewrite(requestId: string): Promise<void>;
   synthesizeRemote(provider: ProviderConfig, message: Extract<RuntimeMessage, { type: 'catchyread/synthesize-remote' }>['payload']): Promise<RemoteAudioPayload>;
   previewTtsSample(provider: ProviderConfig, text: string): Promise<RemoteAudioPayload>;
   testConnectivity(providerKind: 'llm' | 'tts'): Promise<ProviderTestResult>;
@@ -56,6 +57,9 @@ export function createRuntimeMessageRouter(deps: RuntimeRouterDependencies) {
           segments: await deps.providerGateway.rewrite(settings.providers.llm, message.payload)
         };
       }
+      case 'catchyread/cancel-rewrite':
+        await deps.providerGateway.cancelRewrite(message.payload.requestId);
+        return { ok: true };
       case 'catchyread/synthesize-remote': {
         const settings = await deps.settingsRepository.load();
         return {

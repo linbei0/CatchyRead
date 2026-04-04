@@ -26,4 +26,21 @@ describe('TaskQueue', () => {
     await expect(queue.enqueue('retry', worker)).resolves.toBe('ok');
     expect(worker).toHaveBeenCalledTimes(2);
   });
+
+  test('取消任务时会中止对应 signal', async () => {
+    const queue = new TaskQueue({ timeoutMs: 1000, maxRetries: 0 });
+    const worker = vi.fn(
+      (signal: AbortSignal) =>
+        new Promise<string>((resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason));
+          setTimeout(() => resolve('late'), 50);
+        })
+    );
+
+    const promise = queue.enqueue('cancel-me', worker);
+    queue.cancel('cancel-me', new Error('cancelled'));
+
+    await expect(promise).rejects.toThrow('cancelled');
+    expect(worker).toHaveBeenCalledTimes(1);
+  });
 });

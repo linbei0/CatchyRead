@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@/shared/default-settings';
-import type { AppSettings, CodeStrategy, ReadingMode, SpeechEngine, UiPreferences } from '@/shared/types';
+import type { AppSettings, CodeStrategy, ReadingMode, RewriteOutputLanguage, SpeechEngine, UiPreferences } from '@/shared/types';
 
 export interface ProviderFormState {
   providerId: string;
@@ -22,6 +22,8 @@ export interface SettingsFormState {
     mode: ReadingMode;
     codeStrategy: CodeStrategy;
     speechEngine: SpeechEngine;
+    outputLanguage: RewriteOutputLanguage;
+    outputLocale: string;
   };
 }
 
@@ -70,7 +72,9 @@ export function buildSettingsFormState(settings: AppSettings): SettingsFormState
       rate: String(settings.playback.rate),
       mode: settings.playback.mode,
       codeStrategy: settings.playback.codeStrategy,
-      speechEngine: settings.playback.speechEngine
+      speechEngine: settings.playback.speechEngine,
+      outputLanguage: settings.playback.outputLanguage ?? DEFAULT_SETTINGS.playback.outputLanguage ?? 'follow-page',
+      outputLocale: settings.playback.outputLocale ?? DEFAULT_SETTINGS.playback.outputLocale ?? 'zh-CN'
     }
   };
 }
@@ -108,7 +112,9 @@ export function readSettingsFromForm(form: HTMLFormElement, ui: UiPreferences): 
       rate: Number(data.get('playback.rate') || 1),
       mode: String(data.get('playback.mode') || 'smart') as ReadingMode,
       codeStrategy: String(data.get('playback.codeStrategy') || 'summary') as CodeStrategy,
-      speechEngine: String(data.get('playback.speechEngine') || 'browser') as SpeechEngine
+      speechEngine: String(data.get('playback.speechEngine') || 'browser') as SpeechEngine,
+      outputLanguage: String(data.get('playback.outputLanguage') || DEFAULT_SETTINGS.playback.outputLanguage) as RewriteOutputLanguage,
+      outputLocale: String(data.get('playback.outputLocale') || DEFAULT_SETTINGS.playback.outputLocale)
     },
     ui
   };

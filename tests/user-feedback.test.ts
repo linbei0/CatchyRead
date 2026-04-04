@@ -36,4 +36,15 @@ describe('mapErrorToNotice', () => {
     expect(notice.title).toBe('网络连接失败');
     expect(notice.canRetry).toBe(true);
   });
+
+  test('把智能整理超时映射为专用提示', () => {
+    const notice = mapErrorToNotice(new Error('Task timed out after 45000ms'), {
+      surface: 'player',
+      action: 'playback'
+    });
+
+    expect(notice.category).toBe('rewrite-timeout');
+    expect(notice.title).toBe('智能整理超时');
+    expect(notice.recommendedAction).toContain('模型延迟');
+  });
 });
