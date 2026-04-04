@@ -1,5 +1,16 @@
 import { describe, expect, test, vi } from 'vitest';
 
+vi.mock('webextension-polyfill', () => ({
+  default: {
+    storage: {
+      onChanged: {
+        addListener: vi.fn(),
+        removeListener: vi.fn()
+      }
+    }
+  }
+}));
+
 import type { AppSettings, PageSnapshot } from '@/shared/types';
 import { BrowserContentMessageGateway } from '@/infra/runtime/content-message-gateway';
 
@@ -75,5 +86,62 @@ describe('BrowserContentMessageGateway', () => {
         voiceId: 'Cherry'
       }
     });
+  });
+
+  test('监听到设置存储变化时会重新加载并推送最新设置', async () => {
+    const listenerBag: Array<(changes: Record<string, { newValue?: unknown }>, areaName: string) => void> = [];
+    const addListener = vi.fn((listener) => {
+      listenerBag.push(listener);
+    });
+    const removeListener = vi.fn((listener) => {
+      const index = listenerBag.indexOf(listener);
+      if (index >= 0) {
+        listenerBag.splice(index, 1);
+      }
+    });
+    const send = vi.fn().mockResolvedValue({
+      settings: {
+        providers: {
+          llm: { enabled: true } as AppSettings['providers']['llm'],
+          tts: { enabled: true, voiceId: 'Cherry' } as AppSettings['providers']['tts']
+        },
+        playback: {
+          rate: 1.25,
+          mode: 'smart',
+          codeStrategy: 'summary',
+          speechEngine: 'remote',
+          outputLanguage: 'follow-page',
+          outputLocale: 'zh-CN'
+        },
+        ui: {
+          collapsed: false,
+          x: null,
+          y: null
+        }
+      } satisfies AppSettings
+    });
+    const gateway = new BrowserContentMessageGateway(send, {
+      onChanged: {
+        addListener,
+        removeListener
+      }
+    } as never);
+    const onSettings = vi.fn();
+
+    const unsubscribe = gateway.observeSettings(onSettings);
+    await listenerBag[0]?.({ 'catchyread.settings': { newValue: { changed: true } } }, 'local');
+
+    expect(addListener).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith({ type: 'catchyread/get-settings' });
+    expect(onSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        playback: expect.objectContaining({
+          rate: 1.25
+        })
+      })
+    );
+
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledTimes(1);
   });
 });

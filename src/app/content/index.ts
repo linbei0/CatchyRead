@@ -2,6 +2,13 @@ import browser from 'webextension-polyfill';
 
 import { RuntimeCacheRegistry } from '@/lib/cache/runtime-cache-registry';
 import { buildSuccessNotice, mapErrorToNotice } from '@/lib/ui/feedback';
+import {
+  buildRewriteChunks,
+  normalizeStructuredBlocksForRewrite,
+  prepareStructuredBlocksForRewrite,
+  shouldUseMultiChunkRewrite,
+  type RewriteChunk
+} from '@/domain/content/rewrite-pipeline';
 import { detectPlaybackCapabilities } from '@/domain/playback/capabilities';
 import { buildPlaybackViewState } from '@/domain/playback/player-view-state';
 import { resolvePlaybackPreparation } from '@/domain/playback/playback-preparation';
@@ -23,6 +30,7 @@ import type {
   ReadingMode,
   RemoteAudioPayload,
   SmartScriptSegment,
+  StructuredBlock,
   SpeechEngine,
   UserNotice
 } from '@/shared/types';
@@ -94,7 +102,9 @@ class ContentApp {
   private speaking = false;
   private pageSelectionMode = false;
   private pageSnapshotStale = false;
+  private waitingForRewriteAppend = false;
   private persistUiTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopObservingSettings: (() => void) | null = null;
   private remoteAudioPayloadCache = new Map<string, Promise<RemoteAudioPayload>>();
   private remoteAudioUrlCache = new RemoteAudioUrlCache(3);
   private playbackState: PlaybackState = {
@@ -221,6 +231,11 @@ class ContentApp {
     this.open = true;
     this.enableDrag();
     await this.loadSettings();
+    if (!this.stopObservingSettings) {
+      this.stopObservingSettings = this.gateway.observeSettings((settings) => {
+        this.applySettings(settings, { external: true });
+      });
+    }
     this.applyCapabilityConstraints();
     this.refreshPageContent(false);
     this.pageRefreshWatcher.start();
@@ -232,17 +247,43 @@ class ContentApp {
     this.pageRefreshWatcher.stop();
     this.cacheRegistry.clearGroup('remote-audio');
     this.setPageSelectionMode(false);
+    this.waitingForRewriteAppend = false;
+    if (this.stopObservingSettings) {
+      this.stopObservingSettings();
+      this.stopObservingSettings = null;
+    }
     this.view.hide();
     this.open = false;
     this.selection.clearHighlight();
   }
 
   private async loadSettings(): Promise<void> {
-    const settings = await this.gateway.loadSettings();
+    this.applySettings(await this.gateway.loadSettings());
+  }
+
+  private applySettings(settings: AppSettings, options: { external?: boolean } = {}): void {
+    const previousSettings = this.settings;
+    const previousSpeechEngine = this.currentSpeechEngine;
+    const previousCodeStrategy = this.currentCodeStrategy;
     this.settings = settings;
-    this.currentMode = settings.playback.mode;
-    this.currentCodeStrategy = settings.playback.codeStrategy;
-    this.currentSpeechEngine = settings.playback.speechEngine;
+
+    const llmChanged =
+      !!previousSettings && JSON.stringify(previousSettings.providers.llm) !== JSON.stringify(settings.providers.llm);
+    const ttsChanged =
+      !!previousSettings && JSON.stringify(previousSettings.providers.tts) !== JSON.stringify(settings.providers.tts);
+    const rewritePolicyChanged =
+      !!previousSettings &&
+      (
+        previousSettings.playback.outputLanguage !== settings.playback.outputLanguage ||
+        previousSettings.playback.outputLocale !== settings.playback.outputLocale
+      );
+
+    if (!options.external || !this.speaking) {
+      this.currentMode = settings.playback.mode;
+      this.currentCodeStrategy = settings.playback.codeStrategy;
+      this.currentSpeechEngine = settings.playback.speechEngine;
+    }
+
     this.playbackState = {
       ...this.playbackState,
       rate: settings.playback.rate,
@@ -259,7 +300,40 @@ class ContentApp {
     });
     this.view.setCollapsed(settings.ui.collapsed);
     this.view.setPosition(settings.ui.x, settings.ui.y);
-    this.renderPlaybackChrome();
+
+    if (this.currentSpeechEngine === 'remote' && this.remoteAudio.hasSource) {
+      this.remoteAudio.setRate(settings.playback.rate);
+    } else if (this.browserSpeech.hasActiveUtterance) {
+      this.browserSpeech.updateRate(settings.playback.rate);
+    }
+
+    if (ttsChanged) {
+      this.cacheRegistry.clearGroup('remote-audio');
+    }
+
+    if (this.snapshot && previousCodeStrategy !== settings.playback.codeStrategy) {
+      this.originalSegments = this.snapshotService.buildOriginalSegments(this.snapshot, settings.playback.codeStrategy);
+      this.cacheRegistry.clearGroup('smart-segments');
+    }
+
+    if (llmChanged || rewritePolicyChanged) {
+      this.cancelActiveRewrite('Rewrite cancelled because provider settings changed.');
+      this.cacheRegistry.clearGroup('smart-segments');
+    }
+
+    if (options.external && this.open) {
+      const activeEngineChanged = previousSpeechEngine !== this.currentSpeechEngine;
+      if (ttsChanged || llmChanged || rewritePolicyChanged || activeEngineChanged) {
+        this.setNotice({
+          category: 'info',
+          title: '设置已更新',
+          message: this.speaking ? '新的配置会从下一段开始生效。' : '新的配置已经生效，可以直接继续播放。',
+          recommendedAction: this.speaking ? '当前段落会播完，下一段会切到新配置。' : '现在直接点“开始收听”即可。'
+        });
+      }
+    }
+
+    this.renderPreview();
   }
 
   private refreshPageContent(showStatus = true): void {
@@ -334,37 +408,23 @@ class ContentApp {
         category: 'info',
         title: '正在整理重点',
         message: 'CatchyRead 正在把这页内容整理成更适合听的节奏。',
-        recommendedAction: '稍等片刻，整理完成后会自动开始播放。'
+        recommendedAction: '首批内容整理好后会立即开始播放。'
       });
       try {
         if (!this.hasCurrentSmartRewrite()) {
           const requestId = this.createRewriteRequestId();
           const snapshotRevision = this.snapshotRevision;
           this.activeRewriteRequestId = requestId;
-          const segments = await this.gateway.rewrite({
-            snapshot: this.snapshot,
-            canonicalBlocks: this.snapshot.structuredBlocks,
-            requestId,
-            snapshotRevision,
-            policy: {
-              preserveFacts: true,
-              tone: 'podcast-lite',
-              maxSegmentChars: 220,
-              codeStrategy: this.currentCodeStrategy,
-              outputLanguage: this.settings.playback.outputLanguage ?? 'follow-page',
-              outputLocale: this.settings.playback.outputLocale ?? 'zh-CN',
-              uiLanguage: navigator.language
-            }
-          });
-          if (!this.shouldCommitRewriteResult(requestId, snapshotRevision)) {
+          const initialSegments = await this.prepareSmartRewriteInitialSegments(requestId, snapshotRevision);
+          if (!initialSegments.length || !this.shouldCommitRewriteResult(requestId, snapshotRevision)) {
             return;
           }
           this.smartRewriteResult = {
             requestId,
             snapshotRevision,
-            segments
+            segments: initialSegments
           };
-          this.activeRewriteRequestId = null;
+          void this.continueSmartRewriteInBackground(requestId, snapshotRevision);
         }
       } catch (error) {
         if (!this.isRewriteStillActive()) {
@@ -495,6 +555,141 @@ class ContentApp {
     this.setPlaybackStatus('playing');
   }
 
+  private buildRewritePayload(blocks: StructuredBlock[], requestId: string, snapshotRevision: number) {
+    if (!this.snapshot || !this.settings) {
+      throw new Error('页面快照或设置未准备好，无法开始智能整理。');
+    }
+    return {
+      snapshot: this.snapshot,
+      canonicalBlocks: blocks,
+      requestId,
+      snapshotRevision,
+      policy: {
+        preserveFacts: true,
+        tone: 'podcast-lite',
+        maxSegmentChars: 220,
+        codeStrategy: this.currentCodeStrategy,
+        outputLanguage: this.settings.playback.outputLanguage ?? 'follow-page',
+        outputLocale: this.settings.playback.outputLocale ?? 'zh-CN',
+        uiLanguage: navigator.language
+      }
+    } as const;
+  }
+
+  private buildSmartRewriteChunks(): RewriteChunk[] {
+    if (!this.snapshot) {
+      return [];
+    }
+    const filteredBlocks =
+      this.currentCodeStrategy === 'skip'
+        ? this.snapshot.structuredBlocks.filter((block) => block.type !== 'code')
+        : this.snapshot.structuredBlocks;
+    const preparedBlocks = prepareStructuredBlocksForRewrite(filteredBlocks);
+    const normalizedBlocks = normalizeStructuredBlocksForRewrite(preparedBlocks);
+    if (!normalizedBlocks.length) {
+      return [];
+    }
+    return shouldUseMultiChunkRewrite(normalizedBlocks)
+      ? buildRewriteChunks(normalizedBlocks, { softCharLimit: 1800, hardCharLimit: 2400 })
+      : [
+          {
+            id: 'chunk-1',
+            blocks: normalizedBlocks,
+            charCount: normalizedBlocks.reduce((sum, block) => sum + block.text.length, 0)
+          }
+        ];
+  }
+
+  private buildFallbackSegmentsForChunk(chunk: RewriteChunk): SmartScriptSegment[] {
+    return this.snapshotService.buildOriginalSegmentsFromBlocks(chunk.blocks, this.currentCodeStrategy);
+  }
+
+  private async requestRewriteChunk(chunk: RewriteChunk, requestId: string, snapshotRevision: number): Promise<SmartScriptSegment[]> {
+    return this.gateway.rewrite(this.buildRewritePayload(chunk.blocks, requestId, snapshotRevision));
+  }
+
+  private async prepareSmartRewriteInitialSegments(requestId: string, snapshotRevision: number): Promise<SmartScriptSegment[]> {
+    const chunks = this.buildSmartRewriteChunks();
+    if (!chunks.length) {
+      this.activeRewriteRequestId = null;
+      return [];
+    }
+
+    try {
+      return await this.requestRewriteChunk(chunks[0]!, requestId, snapshotRevision);
+    } catch {
+      this.setNotice({
+        category: 'info',
+        title: '首批内容已回退原文',
+        message: '第一批智能整理失败，已自动切回原文段落保证可以继续播放。',
+        recommendedAction: '后续段落会继续尝试智能整理。'
+      });
+      return this.buildFallbackSegmentsForChunk(chunks[0]!);
+    }
+  }
+
+  private async continueSmartRewriteInBackground(requestId: string, snapshotRevision: number): Promise<void> {
+    const chunks = this.buildSmartRewriteChunks();
+    if (chunks.length <= 1) {
+      this.activeRewriteRequestId = null;
+      return;
+    }
+
+    for (let index = 1; index < chunks.length; index += 1) {
+      if (!this.shouldCommitRewriteResult(requestId, snapshotRevision)) {
+        return;
+      }
+
+      const chunk = chunks[index]!;
+      let segments: SmartScriptSegment[];
+      try {
+        segments = await this.requestRewriteChunk(chunk, requestId, snapshotRevision);
+      } catch {
+        segments = this.buildFallbackSegmentsForChunk(chunk);
+        this.setNotice({
+          category: 'info',
+          title: '部分段落已回退原文',
+          message: `第 ${index + 1} 批智能整理失败，已自动回退为原文朗读，播放不会中断。`,
+          recommendedAction: '你可以继续收听；如果想重试，稍后刷新页面即可。'
+        });
+      }
+
+      if (!this.shouldCommitRewriteResult(requestId, snapshotRevision)) {
+        return;
+      }
+      this.appendSmartRewriteSegments(segments, requestId, snapshotRevision);
+    }
+
+    if (!this.shouldCommitRewriteResult(requestId, snapshotRevision)) {
+      return;
+    }
+    this.activeRewriteRequestId = null;
+    if (this.waitingForRewriteAppend) {
+      this.waitingForRewriteAppend = false;
+      this.setNotice(buildSuccessNotice('已经听到最后', '这一页的段落已经播放到结尾。', '如果还想重听，直接点任意段落即可。'));
+      this.setPlaybackStatus('idle');
+    }
+  }
+
+  private appendSmartRewriteSegments(segments: SmartScriptSegment[], requestId: string, snapshotRevision: number): void {
+    if (!segments.length) {
+      return;
+    }
+    const previousLength = this.smartRewriteResult?.segments.length || 0;
+    const nextSegments = [...(this.smartRewriteResult?.segments || []), ...segments];
+    this.smartRewriteResult = {
+      requestId,
+      snapshotRevision,
+      segments: nextSegments
+    };
+    this.renderPreview();
+    if (this.waitingForRewriteAppend && previousLength < nextSegments.length) {
+      this.waitingForRewriteAppend = false;
+      this.currentIndex = previousLength;
+      void this.playCurrent();
+    }
+  }
+
   private async advance(step: number): Promise<void> {
     const segments = this.playbackSource();
     if (!segments.length) {
@@ -513,6 +708,17 @@ class ContentApp {
       return;
     }
     if (nextIndex >= segments.length) {
+      if (step > 0 && this.currentMode === 'smart' && this.isRewriteStillActive()) {
+        this.waitingForRewriteAppend = true;
+        this.setNotice({
+          category: 'info',
+          title: '后续内容整理中',
+          message: '前面的段落已经播完，正在继续整理下一批内容。',
+          recommendedAction: '稍等片刻，整理完成后会自动续播。'
+        });
+        this.setPlaybackStatus('preparing');
+        return;
+      }
       this.stopAll();
       this.currentIndex = segments.length - 1;
       this.renderPreview();
@@ -768,9 +974,11 @@ class ContentApp {
 
   private remoteCacheKey(index: number): string {
     const segment = this.playbackSource()[index];
-    const voice = this.settings?.providers.tts.voiceId || 'default';
+    const provider = this.settings?.providers.tts;
+    const providerKey = provider ? `${provider.providerId}::${provider.baseUrl}::${provider.modelOrVoice}` : 'missing-provider';
+    const voice = provider?.voiceId || 'default';
     const rate = this.settings?.playback.rate || 1;
-    return `${segment?.id || 'missing'}::${voice}::${rate}`;
+    return `${segment?.id || 'missing'}::${providerKey}::${voice}::${rate}`;
   }
 
   private async getRemoteAudioForIndex(index: number): Promise<RemoteAudioPayload> {

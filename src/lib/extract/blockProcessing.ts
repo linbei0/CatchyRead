@@ -51,6 +51,14 @@ function inferSegmentKind(block: StructuredBlock): SmartScriptSegment['kind'] {
   return 'main';
 }
 
+function resolveSourceBlockIds(block: StructuredBlock): string[] {
+  const canonicalIds = block.metadata?.canonicalBlockIds?.filter((id) => id.trim());
+  if (canonicalIds?.length) {
+    return canonicalIds;
+  }
+  return [block.canonicalBlockId || block.sourceElementId];
+}
+
 export function buildSpokenSegments(blocks: StructuredBlock[], options: SegmentBuildOptions): SmartScriptSegment[] {
   const maxLength = options.maxSegmentChars ?? 220;
   const segments: SmartScriptSegment[] = [];
@@ -87,7 +95,7 @@ export function buildSpokenSegments(blocks: StructuredBlock[], options: SegmentB
         id: `${block.id}-segment-${index + 1}`,
         sectionTitle: block.headingPath?.at(-1) || currentSectionTitle,
         spokenText: piece,
-        sourceBlockIds: [block.canonicalBlockId || block.sourceElementId],
+        sourceBlockIds: resolveSourceBlockIds(block),
         kind
       });
     });

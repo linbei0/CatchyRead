@@ -3,9 +3,9 @@ import browser from 'webextension-polyfill';
 import { DEFAULT_SETTINGS } from '@/shared/default-settings';
 import type { AppSettings } from '@/lib/shared/types';
 
-const STORAGE_KEY = 'catchyread.settings';
+export const SETTINGS_STORAGE_KEY = 'catchyread.settings';
 
-function mergeSettings(partial?: Partial<AppSettings>): AppSettings {
+export function mergeSettings(partial?: Partial<AppSettings>): AppSettings {
   return {
     providers: {
       llm: {
@@ -29,14 +29,14 @@ function mergeSettings(partial?: Partial<AppSettings>): AppSettings {
 }
 
 export async function loadSettings(): Promise<AppSettings> {
-  const data = (await browser.storage.local.get(STORAGE_KEY))[STORAGE_KEY] as Partial<AppSettings> | undefined;
+  const data = (await browser.storage.local.get(SETTINGS_STORAGE_KEY))[SETTINGS_STORAGE_KEY] as Partial<AppSettings> | undefined;
   return mergeSettings(data);
 }
 
 export async function saveSettings(settings: AppSettings): Promise<AppSettings> {
   const normalized = mergeSettings(settings);
   await browser.storage.local.set({
-    [STORAGE_KEY]: normalized
+    [SETTINGS_STORAGE_KEY]: normalized
   });
   return normalized;
 }

@@ -1,6 +1,6 @@
 import { buildSpokenSegments } from '@/lib/extract/blockProcessing';
 import { extractPageSnapshot } from '@/lib/extract/pageSnapshot';
-import type { CodeStrategy, PageSnapshot, SmartScriptSegment } from '@/shared/types';
+import type { CodeStrategy, PageSnapshot, SmartScriptSegment, StructuredBlock } from '@/shared/types';
 
 export interface SnapshotResult {
   snapshot: PageSnapshot;
@@ -17,7 +17,11 @@ export class SnapshotService {
   }
 
   buildOriginalSegments(snapshot: PageSnapshot, codeStrategy: CodeStrategy): SmartScriptSegment[] {
-    return buildSpokenSegments(snapshot.structuredBlocks, {
+    return this.buildOriginalSegmentsFromBlocks(snapshot.structuredBlocks, codeStrategy);
+  }
+
+  buildOriginalSegmentsFromBlocks(blocks: StructuredBlock[], codeStrategy: CodeStrategy): SmartScriptSegment[] {
+    return buildSpokenSegments(blocks, {
       mode: 'original',
       codeStrategy,
       maxSegmentChars: 220

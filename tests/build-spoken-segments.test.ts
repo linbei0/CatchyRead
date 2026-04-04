@@ -60,4 +60,27 @@ describe('buildSpokenSegments', () => {
     expect(segments).toHaveLength(2);
     expect(segments.some((segment) => segment.sourceBlockIds.includes('catchyread-3'))).toBe(false);
   });
+
+  test('当块携带 canonicalBlockIds 元数据时会保留全部 sourceBlockIds', () => {
+    const segments = buildSpokenSegments(
+      [
+        {
+          id: 'paragraph-merged',
+          type: 'paragraph',
+          text: '这是合并后的回退段落。',
+          sourceElementId: 'catchyread-merged',
+          headingPath: ['准备'],
+          metadata: {
+            canonicalBlockIds: ['catchyread-2', 'catchyread-3']
+          }
+        }
+      ],
+      {
+        mode: 'original',
+        codeStrategy: 'summary'
+      }
+    );
+
+    expect(segments[0]?.sourceBlockIds).toEqual(['catchyread-2', 'catchyread-3']);
+  });
 });
