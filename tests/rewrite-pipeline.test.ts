@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest';
 import {
   buildRewriteChunks,
   normalizeStructuredBlocksForRewrite,
+  prepareStructuredBlocksForRewrite,
+  getRewriteBlockSourceIds,
   shouldUseMultiChunkRewrite
 } from '@/domain/content/rewrite-pipeline';
 import type { PageSnapshot, StructuredBlock } from '@/shared/types';
@@ -65,5 +67,61 @@ describe('rewrite pipeline helpers', () => {
     expect(blocks.every((block) => block.text.length <= 2400)).toBe(true);
     expect(chunks.flatMap((chunk) => chunk.blocks.map((block) => block.canonicalBlockId))).toContain('catchyread-2');
     expect(chunks[chunks.length - 1]?.blocks.some((block) => block.isWarningLike)).toBe(true);
+  });
+
+  test('会移除标题、合并连续列表、清洗代码噪音并合并相邻重复块', () => {
+    const blocks = prepareStructuredBlocksForRewrite([
+      createBlock({
+        id: 'heading-1',
+        type: 'heading',
+        text: '第一章',
+        sourceElementId: 'catchyread-1',
+        headingPath: ['第一章']
+      }),
+      createBlock({
+        id: 'quote-1',
+        type: 'quote',
+        text: '这是一段重复内容。',
+        sourceElementId: 'catchyread-2',
+        headingPath: ['第一章']
+      }),
+      createBlock({
+        id: 'paragraph-1',
+        type: 'paragraph',
+        text: '这是一段重复内容。',
+        sourceElementId: 'catchyread-3',
+        headingPath: ['第一章']
+      }),
+      createBlock({
+        id: 'list-1',
+        type: 'list',
+        text: '第一点：先装依赖',
+        sourceElementId: 'catchyread-4',
+        headingPath: ['第一章']
+      }),
+      createBlock({
+        id: 'list-2',
+        type: 'list',
+        text: '第二点：配置参数',
+        sourceElementId: 'catchyread-5',
+        headingPath: ['第一章']
+      }),
+      createBlock({
+        id: 'code-1',
+        type: 'code',
+        text: 'xml 体验AI代码助手 代码解读复制代码<dependency>demo</dependency>',
+        sourceElementId: 'catchyread-6',
+        headingPath: ['第一章']
+      })
+    ]);
+
+    expect(blocks.map((block) => block.type)).toEqual(['quote', 'list', 'code']);
+    expect(getRewriteBlockSourceIds(blocks[0]!)).toEqual(['catchyread-2', 'catchyread-3']);
+    expect(getRewriteBlockSourceIds(blocks[1]!)).toEqual(['catchyread-4', 'catchyread-5']);
+    expect(blocks[1]?.text).toContain('第一点：先装依赖');
+    expect(blocks[1]?.text).toContain('第二点：配置参数');
+    expect(blocks[2]?.text).not.toContain('体验AI代码助手');
+    expect(blocks[2]?.text).not.toContain('代码解读');
+    expect(blocks[2]?.text).not.toContain('复制代码');
   });
 });

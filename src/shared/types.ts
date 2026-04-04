@@ -36,6 +36,7 @@ export interface StructuredBlock {
   metadata?: {
     language?: string;
     label?: string;
+    canonicalBlockIds?: string[];
   };
 }
 

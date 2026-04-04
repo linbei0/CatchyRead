@@ -1,6 +1,7 @@
 import type { SmartScriptSegment, StructuredBlock } from '@/shared/types';
 
 const SENTENCE_DELIMITER = /(?<=[。！？!?\.])\s+|\n{2,}/;
+const CODE_NOISE_PATTERN = /体验AI代码助手|代码解读|复制代码/g;
 
 export interface RewriteChunk {
   id: string;
@@ -18,6 +19,101 @@ export interface RewriteValidationOptions {
   maxSegmentChars: number;
   sourceOrder: string[];
   blockIdAliasMap?: Record<string, string>;
+}
+
+export function getRewriteBlockSourceIds(block: StructuredBlock): string[] {
+  const metadataIds = block.metadata?.canonicalBlockIds?.filter((id) => id.trim()) || [];
+  if (metadataIds.length) {
+    return Array.from(new Set(metadataIds));
+  }
+  return [block.canonicalBlockId || block.sourceElementId].filter((id): id is string => Boolean(id?.trim()));
+}
+
+function sameHeadingPath(left: StructuredBlock, right: StructuredBlock): boolean {
+  return (left.headingPath || []).join('\u0000') === (right.headingPath || []).join('\u0000');
+}
+
+function normalizeComparableText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function withRewriteBlockSourceIds(block: StructuredBlock, sourceIds: string[]): StructuredBlock {
+  return {
+    ...block,
+    metadata: {
+      ...block.metadata,
+      canonicalBlockIds: Array.from(new Set(sourceIds))
+    }
+  };
+}
+
+function cleanRewriteBlockText(block: StructuredBlock): string {
+  const trimmed = block.text.trim();
+  if (block.type !== 'code') {
+    return trimmed;
+  }
+
+  const cleaned = trimmed
+    .replace(/^\s*[\w#+.-]+\s+(?=(?:体验AI代码助手|代码解读|复制代码))/u, '')
+    .replace(CODE_NOISE_PATTERN, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return cleaned || trimmed;
+}
+
+export function prepareStructuredBlocksForRewrite(blocks: StructuredBlock[]): StructuredBlock[] {
+  const prepared: StructuredBlock[] = [];
+
+  for (const block of blocks) {
+    if (block.type === 'heading') {
+      continue;
+    }
+
+    const text = cleanRewriteBlockText(block);
+    if (!text) {
+      continue;
+    }
+
+    const nextBlock = withRewriteBlockSourceIds(
+      {
+        ...block,
+        text
+      },
+      getRewriteBlockSourceIds(block)
+    );
+    const previousBlock = prepared[prepared.length - 1];
+
+    if (
+      previousBlock &&
+      sameHeadingPath(previousBlock, nextBlock) &&
+      Boolean(previousBlock.isWarningLike) === Boolean(nextBlock.isWarningLike)
+    ) {
+      if (normalizeComparableText(previousBlock.text) === normalizeComparableText(nextBlock.text)) {
+        prepared[prepared.length - 1] = withRewriteBlockSourceIds(previousBlock, [
+          ...getRewriteBlockSourceIds(previousBlock),
+          ...getRewriteBlockSourceIds(nextBlock)
+        ]);
+        continue;
+      }
+
+      if (previousBlock.type === 'list' && nextBlock.type === 'list') {
+        prepared[prepared.length - 1] = withRewriteBlockSourceIds(
+          {
+            ...previousBlock,
+            text: `${previousBlock.text}\n${nextBlock.text}`.trim()
+          },
+          [...getRewriteBlockSourceIds(previousBlock), ...getRewriteBlockSourceIds(nextBlock)]
+        );
+        continue;
+      }
+    }
+
+    prepared.push(nextBlock);
+  }
+
+  return prepared;
 }
 
 function splitBlockText(text: string, hardCharLimit: number): string[] {

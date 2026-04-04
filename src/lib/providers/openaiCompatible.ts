@@ -1,6 +1,8 @@
 import {
   buildRewriteChunks,
+  getRewriteBlockSourceIds,
   normalizeStructuredBlocksForRewrite,
+  prepareStructuredBlocksForRewrite,
   shouldUseMultiChunkRewrite,
   validateRewriteSegments
 } from '@/domain/content/rewrite-pipeline';
@@ -63,28 +65,44 @@ function resolveTargetLanguage(payload: RewriteRequestPayload): string {
   return payload.snapshot.language || policy.uiLanguage || 'zh-CN';
 }
 
-function buildSystemPrompt(targetLanguage: string, codeStrategy: RewriteRequestPayload['policy']['codeStrategy']): string {
+function buildSystemPrompt(
+  targetLanguage: string,
+  codeStrategy: RewriteRequestPayload['policy']['codeStrategy'],
+  structuredOutputs: boolean
+): string {
   const isChinese = /^zh\b/i.test(targetLanguage);
   if (isChinese) {
-    return [
+    const sharedLines = [
       '你是一个网页朗读稿整理器。',
       `输出语言必须是 ${targetLanguage}。除非目标语言与页面语言不同，否则不要主动翻译术语。`,
-      '请把输入的结构化网页正文整理成适合收听的口语稿，但不能改变事实、顺序、限制条件、警告和结论。',
+      '请按输入顺序整理成适合收听的口语稿，不得新增事实、推断、开场白、总结或额外建议。',
       codeStrategy === 'skip' ? '遇到代码块时请直接跳过，不要输出任何代码相关段落。' : '代码块默认只解释作用，不逐字念原文。',
-      'sourceBlockIds 只能填写输入 canonicalBlocks 里的 canonicalBlockId，绝不能自造 paragraph-1、block-1 之类的新 id。',
-      '你必须只输出 JSON，格式为 {"segments":[{"id":"","sectionTitle":"","spokenText":"","sourceBlockIds":[],"kind":"main|code-summary|warning"}]}。'
+      'sourceBlockIds 只能填写输入 canonicalBlocks 里的 canonicalBlockIds。'
+    ];
+    if (structuredOutputs) {
+      return [...sharedLines, '只输出严格匹配 schema 的 JSON，不要额外文本。'].join('\n');
+    }
+
+    return [
+      ...sharedLines,
+      '你必须只输出 JSON，格式为 {"segments":[{"sectionTitle":"","spokenText":"","sourceBlockIds":[],"kind":"main|code-summary|warning"}]}。'
     ].join('\n');
   }
 
-  return [
+  const sharedLines = [
     'You rewrite web documents into audio-friendly scripts.',
     `The output language must be ${targetLanguage}. Do not translate technical terms unless the requested target language differs from the page language.`,
-    'Preserve facts, ordering, restrictions, warnings, and conclusions.',
-    codeStrategy === 'skip'
-      ? 'Skip code blocks entirely.'
-      : 'For code blocks, explain the purpose instead of reading every token.',
-    'sourceBlockIds must use canonicalBlockId values from the input canonicalBlocks only. Never invent ids like paragraph-1 or block-1.',
-    'Return JSON only in the shape {"segments":[{"id":"","sectionTitle":"","spokenText":"","sourceBlockIds":[],"kind":"main|code-summary|warning"}]}.'
+    'Keep the original order and do not add facts, inferences, introductions, conclusions, or extra advice.',
+    codeStrategy === 'skip' ? 'Skip code blocks entirely.' : 'For code blocks, explain the purpose instead of reading every token.',
+    'sourceBlockIds must use values listed in canonicalBlockIds from the input canonicalBlocks only.'
+  ];
+  if (structuredOutputs) {
+    return [...sharedLines, 'Return JSON only and match the schema exactly.'].join('\n');
+  }
+
+  return [
+    ...sharedLines,
+    'Return JSON only in the shape {"segments":[{"sectionTitle":"","spokenText":"","sourceBlockIds":[],"kind":"main|code-summary|warning"}]}.'
   ].join('\n');
 }
 
@@ -94,7 +112,7 @@ function buildRewriteUserPayload(
   chunkIndex: number,
   totalChunks: number
 ): Record<string, unknown> {
-  return {
+  const requestPayload: Record<string, unknown> = {
     requestId: payload.requestId,
     snapshotRevision: payload.snapshotRevision,
     targetLanguage: resolveTargetLanguage(payload),
@@ -102,27 +120,26 @@ function buildRewriteUserPayload(
     preserveFacts: payload.policy.preserveFacts,
     maxSegmentChars: payload.policy.maxSegmentChars ?? 220,
     codeStrategy: payload.policy.codeStrategy ?? 'summary',
-    chunkIndex,
-    totalChunks,
     snapshot: {
       url: payload.snapshot.url,
       title: payload.snapshot.title,
-      language: payload.snapshot.language,
-      excerpt: payload.snapshot.excerpt,
-      siteName: payload.snapshot.siteName,
-      byline: payload.snapshot.byline
+      language: payload.snapshot.language
     },
     canonicalBlocks: blocks.map((block) => ({
-      id: block.id,
-      canonicalBlockId: block.canonicalBlockId || block.sourceElementId,
+      canonicalBlockIds: getRewriteBlockSourceIds(block),
       type: block.type,
       text: block.text,
       headingPath: block.headingPath || [],
-      priority: block.priority || 'normal',
-      isWarningLike: Boolean(block.isWarningLike),
-      metadata: block.metadata
+      isWarningLike: Boolean(block.isWarningLike)
     }))
   };
+
+  if (totalChunks > 1) {
+    requestPayload.chunkIndex = chunkIndex;
+    requestPayload.totalChunks = totalChunks;
+  }
+
+  return requestPayload;
 }
 
 export function buildLlmConnectivityRequest(
@@ -180,10 +197,12 @@ export function buildRewriteRequest(
   }
 ): { url: string; init: RequestInit } {
   const rewriteBlocks =
-    payload.policy.codeStrategy === 'skip'
-      ? payload.canonicalBlocks.filter((block) => block.type !== 'code')
-      : payload.canonicalBlocks;
-  const selectedBlocks = options.blocks || rewriteBlocks;
+    options.blocks ||
+    prepareStructuredBlocksForRewrite(
+      payload.policy.codeStrategy === 'skip'
+        ? payload.canonicalBlocks.filter((block) => block.type !== 'code')
+        : payload.canonicalBlocks
+    );
   const targetLanguage = resolveTargetLanguage(payload);
   const body: Record<string, unknown> = {
     model: provider.modelOrVoice,
@@ -191,11 +210,11 @@ export function buildRewriteRequest(
     messages: [
       {
         role: 'system',
-        content: buildSystemPrompt(targetLanguage, payload.policy.codeStrategy)
+        content: buildSystemPrompt(targetLanguage, payload.policy.codeStrategy, options.structuredOutputs)
       },
       {
         role: 'user',
-        content: JSON.stringify(buildRewriteUserPayload(payload, selectedBlocks, options.chunkIndex ?? 1, options.totalChunks ?? 1))
+        content: JSON.stringify(buildRewriteUserPayload(payload, rewriteBlocks, options.chunkIndex ?? 1, options.totalChunks ?? 1))
       }
     ]
   };
@@ -214,7 +233,6 @@ export function buildRewriteRequest(
               items: {
                 type: 'object',
                 properties: {
-                  id: { type: 'string' },
                   sectionTitle: { type: 'string' },
                   spokenText: { type: 'string' },
                   sourceBlockIds: {
@@ -227,7 +245,7 @@ export function buildRewriteRequest(
                     enum: ['main', 'code-summary', 'warning']
                   }
                 },
-                required: ['id', 'sectionTitle', 'spokenText', 'sourceBlockIds', 'kind'],
+                required: ['sectionTitle', 'spokenText', 'sourceBlockIds', 'kind'],
                 additionalProperties: false
               }
             }
@@ -313,8 +331,8 @@ export function parseRewriteResponse(
     throw new Error('LLM 返回的格式不正确，缺少 segments 数组。');
   }
   return validateRewriteSegments(
-    parsed.segments.map((segment) => ({
-      id: String(segment.id || ''),
+    parsed.segments.map((segment, index) => ({
+      id: `smart-segment-${index + 1}`,
       sectionTitle: String(segment.sectionTitle || ''),
       spokenText: String(segment.spokenText || ''),
       sourceBlockIds: Array.isArray(segment.sourceBlockIds) ? segment.sourceBlockIds.map(String) : [],
@@ -331,8 +349,8 @@ async function runRewriteRequest(
   fetcher: typeof fetch,
   signal: AbortSignal | undefined
 ): Promise<SmartScriptSegment[]> {
-  const allowedIds = blocks.map((block) => block.canonicalBlockId || block.sourceElementId);
-  const sourceOrder = payload.canonicalBlocks.map((block) => block.canonicalBlockId || block.sourceElementId);
+  const allowedIds = Array.from(new Set(blocks.flatMap((block) => getRewriteBlockSourceIds(block))));
+  const sourceOrder = payload.canonicalBlocks.flatMap((block) => getRewriteBlockSourceIds(block));
   const blockIdAliasMap = Object.fromEntries(
     payload.canonicalBlocks.map((block) => [block.id, block.canonicalBlockId || block.sourceElementId])
   );
@@ -414,7 +432,8 @@ export async function fetchRewriteSegments(
     payload.policy.codeStrategy === 'skip'
       ? payload.canonicalBlocks.filter((block) => block.type !== 'code')
       : payload.canonicalBlocks;
-  const canonicalBlocks = normalizeStructuredBlocksForRewrite(filteredBlocks);
+  const preparedBlocks = prepareStructuredBlocksForRewrite(filteredBlocks);
+  const canonicalBlocks = normalizeStructuredBlocksForRewrite(preparedBlocks);
   const normalizedPayload = {
     ...payload,
     canonicalBlocks

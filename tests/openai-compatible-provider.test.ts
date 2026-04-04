@@ -90,9 +90,9 @@ describe('openaiCompatible provider helpers', () => {
     const userContent = JSON.parse(String(rawBody.messages.find((message) => message.role === 'user')?.content || '{}')) as {
       requestId: string;
       snapshotRevision: number;
-      snapshot: { title: string; siteName: string };
+      snapshot: { title: string; language: string };
       targetLanguage: string;
-      canonicalBlocks: Array<{ canonicalBlockId: string }>;
+      canonicalBlocks: Array<{ canonicalBlockIds: string[] }>;
     };
 
     expect(request.url).toBe('https://example.com/v1/chat/completions');
@@ -103,10 +103,168 @@ describe('openaiCompatible provider helpers', () => {
     expect(userContent.requestId).toBe('req-1');
     expect(userContent.snapshotRevision).toBe(3);
     expect(userContent.snapshot.title).toBe('How to build a browser extension');
-    expect(userContent.snapshot.siteName).toBe('Example Docs');
+    expect(userContent.snapshot.language).toBe('en-US');
     expect(userContent.targetLanguage).toBe('en-US');
-    expect(userContent.canonicalBlocks[0]?.canonicalBlockId).toBe('catchyread-1');
+    expect(userContent.canonicalBlocks[0]?.canonicalBlockIds).toEqual(['catchyread-1']);
     expect(String(request.init.body)).toContain('"response_format"');
+  });
+
+  test('构造结构化改写请求时会精简 prompt 与 payload 以减少 token', () => {
+    const request = buildRewriteRequest(
+      provider,
+      buildPayload({
+        policy: {
+          ...buildPayload().policy,
+          outputLanguage: 'explicit-locale',
+          outputLocale: 'zh-CN'
+        }
+      }),
+      { structuredOutputs: true }
+    );
+    const rawBody = JSON.parse(String(request.init.body)) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const systemContent = String(rawBody.messages.find((message) => message.role === 'system')?.content || '');
+    const userContent = JSON.parse(String(rawBody.messages.find((message) => message.role === 'user')?.content || '{}')) as {
+      chunkIndex?: number;
+      totalChunks?: number;
+      canonicalBlocks: Array<Record<string, unknown>>;
+    };
+
+    expect(systemContent).toContain('只输出严格匹配 schema 的 JSON');
+    expect(systemContent).not.toContain('格式为 {"segments"');
+    expect('chunkIndex' in userContent).toBe(false);
+    expect('totalChunks' in userContent).toBe(false);
+    expect('id' in (userContent.canonicalBlocks[0] || {})).toBe(false);
+    expect('priority' in (userContent.canonicalBlocks[0] || {})).toBe(false);
+  });
+
+  test('多块改写请求仍会保留必要的分块元数据', () => {
+    const request = buildRewriteRequest(provider, buildPayload(), {
+      structuredOutputs: true,
+      chunkIndex: 2,
+      totalChunks: 3
+    });
+    const rawBody = JSON.parse(String(request.init.body)) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const userContent = JSON.parse(String(rawBody.messages.find((message) => message.role === 'user')?.content || '{}')) as {
+      chunkIndex?: number;
+      totalChunks?: number;
+    };
+
+    expect(userContent.chunkIndex).toBe(2);
+    expect(userContent.totalChunks).toBe(3);
+  });
+
+  test('构造改写请求时会预处理块并压缩 snapshot 与 schema', () => {
+    const requestBlocks: StructuredBlock[] = [
+      {
+        id: 'heading-1',
+        canonicalBlockId: 'catchyread-h1',
+        type: 'heading',
+        text: '准备',
+        sourceElementId: 'catchyread-h1',
+        headingPath: ['准备'],
+        priority: 'supporting',
+        isWarningLike: false
+      },
+      {
+        id: 'quote-1',
+        canonicalBlockId: 'catchyread-q1',
+        type: 'quote',
+        text: '这是一段重复内容。',
+        sourceElementId: 'catchyread-q1',
+        headingPath: ['准备'],
+        priority: 'normal',
+        isWarningLike: false
+      },
+      {
+        id: 'paragraph-1',
+        canonicalBlockId: 'catchyread-p1',
+        type: 'paragraph',
+        text: '这是一段重复内容。',
+        sourceElementId: 'catchyread-p1',
+        headingPath: ['准备'],
+        priority: 'normal',
+        isWarningLike: false
+      },
+      {
+        id: 'list-1',
+        canonicalBlockId: 'catchyread-l1',
+        type: 'list',
+        text: '第一点：先装依赖',
+        sourceElementId: 'catchyread-l1',
+        headingPath: ['准备'],
+        priority: 'supporting',
+        isWarningLike: false
+      },
+      {
+        id: 'list-2',
+        canonicalBlockId: 'catchyread-l2',
+        type: 'list',
+        text: '第二点：配置参数',
+        sourceElementId: 'catchyread-l2',
+        headingPath: ['准备'],
+        priority: 'supporting',
+        isWarningLike: false
+      },
+      {
+        id: 'code-1',
+        canonicalBlockId: 'catchyread-c1',
+        type: 'code',
+        text: 'xml 体验AI代码助手 代码解读复制代码<dependency>demo</dependency>',
+        sourceElementId: 'catchyread-c1',
+        headingPath: ['准备'],
+        priority: 'normal',
+        isWarningLike: false
+      }
+    ];
+    const request = buildRewriteRequest(
+      provider,
+      buildPayload({
+        canonicalBlocks: requestBlocks,
+        snapshot: {
+          ...snapshot,
+          excerpt: '这段摘要不应该继续发送。',
+          byline: '这段署名也不应该继续发送。'
+        }
+      }),
+      { structuredOutputs: true }
+    );
+    const rawBody = JSON.parse(String(request.init.body)) as {
+      messages: Array<{ role: string; content: string }>;
+      response_format: {
+        json_schema: {
+          schema: {
+            properties: {
+              segments: {
+                items: {
+                  required: string[];
+                };
+              };
+            };
+          };
+        };
+      };
+    };
+    const userContent = JSON.parse(String(rawBody.messages.find((message) => message.role === 'user')?.content || '{}')) as {
+      snapshot: Record<string, unknown>;
+      canonicalBlocks: Array<Record<string, unknown>>;
+    };
+
+    expect(userContent.snapshot).toEqual({
+      url: 'https://example.com/tutorial',
+      title: 'How to build a browser extension',
+      language: 'en-US'
+    });
+    expect(userContent.canonicalBlocks.map((block) => block.type)).toEqual(['quote', 'list', 'code']);
+    expect(userContent.canonicalBlocks[0]?.canonicalBlockIds).toEqual(['catchyread-q1', 'catchyread-p1']);
+    expect(userContent.canonicalBlocks[1]?.canonicalBlockIds).toEqual(['catchyread-l1', 'catchyread-l2']);
+    expect(String(userContent.canonicalBlocks[2]?.text || '')).not.toContain('体验AI代码助手');
+    expect(String(userContent.canonicalBlocks[2]?.text || '')).not.toContain('代码解读');
+    expect(String(userContent.canonicalBlocks[2]?.text || '')).not.toContain('复制代码');
+    expect(rawBody.response_format.json_schema.schema.properties.segments.items.required).not.toContain('id');
   });
 
   test('DashScope Base URL 会自动切到兼容聊天路径', () => {
@@ -191,6 +349,19 @@ describe('openaiCompatible provider helpers', () => {
     expect(segments.length).toBeGreaterThan(1);
     expect(segments.every((segment) => segment.spokenText.length <= 120)).toBe(true);
     expect(segments.every((segment) => segment.sourceBlockIds[0] === 'catchyread-1')).toBe(true);
+  });
+
+  test('解析响应时会为缺失 id 的段落本地生成编号', () => {
+    const segments = parseRewriteResponse(
+      '{"segments":[{"sectionTitle":"准备","spokenText":"先装好 Bun，然后初始化项目。","sourceBlockIds":["catchyread-1"],"kind":"main"}]}',
+      {
+        allowedSourceBlockIds: canonicalBlocks.map((block) => block.canonicalBlockId || block.sourceElementId),
+        maxSegmentChars: 220,
+        sourceOrder: canonicalBlocks.map((block) => block.canonicalBlockId || block.sourceElementId)
+      }
+    );
+
+    expect(segments[0]?.id).toBe('smart-segment-1');
   });
 
   test('构造远端 TTS 请求', () => {
