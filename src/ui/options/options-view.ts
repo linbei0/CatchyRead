@@ -156,6 +156,7 @@ export class OptionsView {
                 <select name="playback.codeStrategy">
                   <option value="summary" ${formState.playback.codeStrategy === 'summary' ? 'selected' : ''}>讲作用</option>
                   <option value="full" ${formState.playback.codeStrategy === 'full' ? 'selected' : ''}>念原文</option>
+                  <option value="skip" ${formState.playback.codeStrategy === 'skip' ? 'selected' : ''}>跳过代码</option>
                 </select>
               </label>
               <label>默认倍速<input name="playback.rate" type="number" min="0.5" max="2" step="0.1" value="${formState.playback.rate}" /></label>

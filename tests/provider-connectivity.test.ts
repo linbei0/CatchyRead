@@ -31,6 +31,15 @@ describe('provider connectivity helpers', () => {
     expect(String(request.init.body)).toContain('"max_tokens":12');
   });
 
+  test('DashScope OpenAI 兼容模式会改用 compatible-mode 路径', () => {
+    const request = buildLlmConnectivityRequest({
+      ...llmProvider,
+      baseUrl: 'https://dashscope.aliyuncs.com/api/v1'
+    });
+
+    expect(request.url).toBe('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions');
+  });
+
   test('构造 TTS 连通性探测请求', () => {
     const request = buildTtsConnectivityRequest(ttsProvider);
 

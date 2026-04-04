@@ -179,6 +179,8 @@ class ContentApp {
       this.playbackState.rate = rate;
       if (this.currentSpeechEngine === 'remote' && this.remoteAudio.hasSource) {
         this.remoteAudio.setRate(rate);
+      } else if (this.currentSpeechEngine === 'browser' && this.browserSpeech.hasActiveUtterance) {
+        this.browserSpeech.updateRate(rate);
       }
       this.renderPlaybackChrome();
     });
@@ -333,7 +335,8 @@ class ContentApp {
         this.smartSegments = await this.gateway.rewrite(this.snapshot.structuredBlocks, {
           preserveFacts: true,
           tone: 'podcast-lite',
-          maxSegmentChars: 220
+          maxSegmentChars: 220,
+          codeStrategy: this.currentCodeStrategy
         });
         this.currentSegments = this.smartSegments;
       } catch (error) {

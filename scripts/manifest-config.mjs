@@ -7,6 +7,7 @@ export function createManifest() {
     permissions: ['storage', 'tabs', 'activeTab', 'scripting'],
     optional_host_permissions: ['https://*/*', 'http://*/*'],
     background: {
+      scripts: ['background.js'],
       service_worker: 'background.js',
       type: 'module'
     },

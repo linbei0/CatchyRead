@@ -11,6 +11,7 @@ export class BrowserSpeechSession {
   private utterance: SpeechSynthesisUtterance | null = null;
   private paused = false;
   private token = 0;
+  private currentSpeech: { text: string; lang: string; rate: number } | null = null;
 
   constructor(private readonly events: BrowserSpeechSessionEvents) {}
 
@@ -28,6 +29,11 @@ export class BrowserSpeechSession {
     this.token = token;
     this.utterance = utterance;
     this.paused = false;
+    this.currentSpeech = {
+      text,
+      lang: options.lang,
+      rate: options.rate
+    };
     utterance.lang = options.lang;
     utterance.rate = options.rate;
     utterance.onpause = () => {
@@ -50,6 +56,7 @@ export class BrowserSpeechSession {
       }
       this.utterance = null;
       this.paused = false;
+      this.currentSpeech = null;
       this.events.onEnd();
     };
     utterance.onerror = (event) => {
@@ -61,6 +68,7 @@ export class BrowserSpeechSession {
       }
       this.utterance = null;
       this.paused = false;
+      this.currentSpeech = null;
       this.events.onError(new Error('浏览器语音播放失败。'));
     };
 
@@ -69,6 +77,23 @@ export class BrowserSpeechSession {
       speechSynthesis.resume();
     }
     speechSynthesis.speak(utterance);
+  }
+
+  updateRate(rate: number): void {
+    if (!this.currentSpeech || !this.utterance) {
+      return;
+    }
+
+    const wasPaused = this.paused;
+    this.speak(this.currentSpeech.text, {
+      lang: this.currentSpeech.lang,
+      rate
+    });
+
+    if (wasPaused) {
+      speechSynthesis.pause();
+      this.paused = true;
+    }
   }
 
   pause(): void {
@@ -85,6 +110,7 @@ export class BrowserSpeechSession {
     this.token += 1;
     this.utterance = null;
     this.paused = false;
+    this.currentSpeech = null;
     speechSynthesis.cancel();
   }
 }

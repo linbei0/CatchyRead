@@ -6,34 +6,37 @@ import { buildSuccessNotice, mapErrorToNotice } from '@/lib/ui/feedback';
 import type { AppSettings, ProviderConfig, ProviderTestResult, UserNotice } from '@/shared/types';
 import { OptionsMessageGateway } from '@/infra/runtime/options-message-gateway';
 
-export class ProviderConfigController {
-  constructor(private readonly gateway: OptionsMessageGateway) {}
+type PermissionsApi = Pick<typeof browser.permissions, 'request'>;
 
-  private async ensureProviderOriginsGranted(provider: ProviderConfig): Promise<void> {
-    const origins = buildRequiredOriginsForProvider(provider);
-    const alreadyGranted = await browser.permissions.contains({ origins });
-    if (alreadyGranted) {
+export class ProviderConfigController {
+  constructor(
+    private readonly gateway: OptionsMessageGateway,
+    private readonly permissionsApi: PermissionsApi = browser.permissions
+  ) {}
+
+  private async ensureProviderOriginsGranted(providers: ProviderConfig[]): Promise<void> {
+    const origins = Array.from(new Set(providers.flatMap((provider) => buildRequiredOriginsForProvider(provider))));
+    if (origins.length === 0) {
       return;
     }
-    const granted = await browser.permissions.request({ origins });
+
+    const granted = await this.permissionsApi.request({ origins });
     if (!granted) {
-      throw new Error(`未授予 ${provider.kind.toUpperCase()} Provider 所需的域名访问权限。`);
+      const providerKinds = Array.from(new Set(providers.map((provider) => provider.kind.toUpperCase()))).join(' / ');
+      throw new Error(`未授予 ${providerKinds} Provider 所需的域名访问权限。`);
     }
   }
 
   async saveSettings(settings: AppSettings): Promise<AppSettings> {
-    if (settings.providers.llm.enabled) {
-      await this.ensureProviderOriginsGranted(settings.providers.llm);
-    }
-    if (settings.providers.tts.enabled) {
-      await this.ensureProviderOriginsGranted(settings.providers.tts);
-    }
+    await this.ensureProviderOriginsGranted(
+      [settings.providers.llm, settings.providers.tts].filter((provider) => provider.enabled)
+    );
     return this.gateway.saveSettings(settings);
   }
 
   async testProvider(providerKind: 'llm' | 'tts', settings: AppSettings): Promise<ProviderTestResult> {
-    await this.ensureProviderOriginsGranted(providerKind === 'llm' ? settings.providers.llm : settings.providers.tts);
-    await this.saveSettings(settings);
+    await this.ensureProviderOriginsGranted([providerKind === 'llm' ? settings.providers.llm : settings.providers.tts]);
+    await this.gateway.saveSettings(settings);
     return this.gateway.testProvider(providerKind);
   }
 

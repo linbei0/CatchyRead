@@ -96,6 +96,7 @@ function createTemplate(documentRef: Document): HTMLDivElement {
             <select id="code">
               <option value="summary">讲作用</option>
               <option value="full">念原文</option>
+              <option value="skip">直接跳过</option>
             </select>
           </label>
           <div class="more-actions">
@@ -216,7 +217,7 @@ export class PlayerView {
     );
     findElement<HTMLSelectElement>(this.root, '#code').addEventListener('change', (event) => {
       const value = (event.target as HTMLSelectElement).value;
-      if (value === 'summary' || value === 'full') {
+      if (value === 'summary' || value === 'full' || value === 'skip') {
         this.handlers.codeStrategyChange?.(value);
       }
     });

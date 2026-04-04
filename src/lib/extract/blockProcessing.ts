@@ -61,6 +61,10 @@ export function buildSpokenSegments(blocks: StructuredBlock[], options: SegmentB
       currentSectionTitle = block.text;
     }
 
+    if (block.type === 'code' && options.codeStrategy === 'skip') {
+      continue;
+    }
+
     const spokenText =
       block.type === 'code'
         ? options.codeStrategy === 'summary'

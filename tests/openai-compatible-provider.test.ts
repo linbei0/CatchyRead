@@ -23,6 +23,15 @@ const blocks: StructuredBlock[] = [
     type: 'paragraph',
     text: '先安装 Bun，再初始化项目目录。',
     sourceElementId: 'catchyread-1'
+  },
+  {
+    id: 'code-1',
+    type: 'code',
+    text: 'bun init\nbun add commander',
+    sourceElementId: 'catchyread-2',
+    metadata: {
+      language: 'bash'
+    }
   }
 ];
 
@@ -41,6 +50,22 @@ describe('openaiCompatible provider helpers', () => {
     expect(String(request.init.body)).toContain('sourceBlockIds');
     expect(String(request.init.body)).toContain('podcast-lite');
     expect(String(request.init.body)).not.toContain('response_format');
+  });
+
+  test('DashScope Base URL 会自动切到兼容聊天路径', () => {
+    const request = buildRewriteRequest(
+      {
+        ...provider,
+        baseUrl: 'https://dashscope.aliyuncs.com/api/v1'
+      },
+      blocks,
+      {
+        preserveFacts: true,
+        tone: 'podcast-lite'
+      }
+    );
+
+    expect(request.url).toBe('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions');
   });
 
   test('解析 JSON fenced code block 响应', () => {
@@ -90,5 +115,24 @@ describe('openaiCompatible provider helpers', () => {
     expect(totalChars).toBeLessThanOrEqual(1100);
     expect(selected.length).toBeLessThan(12);
     expect(selected[0]?.id).toBe('paragraph-1');
+  });
+
+  test('跳过代码策略不会把代码块发送给 LLM', () => {
+    const request = buildRewriteRequest(provider, blocks, {
+      preserveFacts: true,
+      tone: 'podcast-lite',
+      codeStrategy: 'skip'
+    });
+    const payload = JSON.parse(String(request.init.body)) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const userMessage = payload.messages.find((message) => message.role === 'user');
+    const prompt = JSON.parse(String(userMessage?.content || '{}')) as {
+      blocks?: StructuredBlock[];
+    };
+
+    expect(prompt.blocks?.map((item) => item.id)).toContain('paragraph-1');
+    expect(prompt.blocks?.map((item) => item.id)).not.toContain('code-1');
+    expect(userMessage?.content).not.toContain('bun add commander');
   });
 });

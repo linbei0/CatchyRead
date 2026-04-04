@@ -1,7 +1,7 @@
 export type StructuredBlockType = 'paragraph' | 'heading' | 'list' | 'quote' | 'code' | 'note';
 export type SmartSegmentKind = 'main' | 'code-summary' | 'warning';
 export type ReadingMode = 'original' | 'smart';
-export type CodeStrategy = 'summary' | 'full';
+export type CodeStrategy = 'summary' | 'full' | 'skip';
 export type SpeechEngine = 'browser' | 'remote';
 export type PlaybackStatus = 'idle' | 'preparing' | 'playing' | 'paused' | 'error';
 export type PlaybackProgressMode = 'segment-only' | 'media-time';
@@ -64,6 +64,7 @@ export interface RewritePolicy {
   preserveFacts: boolean;
   tone: string;
   maxSegmentChars?: number;
+  codeStrategy?: CodeStrategy;
 }
 
 export interface SegmentBuildOptions {

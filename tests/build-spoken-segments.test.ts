@@ -50,4 +50,14 @@ describe('buildSpokenSegments', () => {
     expect(segments[2]?.spokenText).toContain('bun add commander');
     expect(segments[2]?.kind).toBe('main');
   });
+
+  test('切换为跳过代码后不生成代码段落', () => {
+    const segments = buildSpokenSegments(blocks, {
+      mode: 'original',
+      codeStrategy: 'skip'
+    });
+
+    expect(segments).toHaveLength(2);
+    expect(segments.some((segment) => segment.sourceBlockIds.includes('catchyread-3'))).toBe(false);
+  });
 });

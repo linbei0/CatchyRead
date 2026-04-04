@@ -15,6 +15,20 @@ function trimSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
+function resolveLlmBaseUrl(baseUrl: string): string {
+  const trimmed = trimSlash(baseUrl);
+  try {
+    const parsed = new URL(trimmed);
+    const normalizedPath = parsed.pathname.replace(/\/+$/, '');
+    if (parsed.hostname === 'dashscope.aliyuncs.com' && normalizedPath === '/api/v1') {
+      return `${parsed.origin}/compatible-mode/v1`;
+    }
+  } catch {
+    return trimmed;
+  }
+  return trimmed;
+}
+
 function resolveHeaders(provider: ProviderConfig): Record<string, string> {
   assertSafeProviderConfig(provider);
   return {
@@ -42,7 +56,7 @@ export function selectBlocksForRewrite(blocks: StructuredBlock[], maxCharacters 
 
 export function buildLlmConnectivityRequest(provider: ProviderConfig): { url: string; init: RequestInit } {
   return {
-    url: `${trimSlash(provider.baseUrl)}/chat/completions`,
+    url: `${resolveLlmBaseUrl(provider.baseUrl)}/chat/completions`,
     init: {
       method: 'POST',
       headers: resolveHeaders(provider),
@@ -66,11 +80,12 @@ export function buildRewriteRequest(
   blocks: StructuredBlock[],
   policy: RewritePolicy
 ): { url: string; init: RequestInit } {
-  const selectedBlocks = selectBlocksForRewrite(blocks);
+  const rewriteBlocks = policy.codeStrategy === 'skip' ? blocks.filter((block) => block.type !== 'code') : blocks;
+  const selectedBlocks = selectBlocksForRewrite(rewriteBlocks);
   const systemPrompt = [
     '你是一个网页朗读稿整理器。',
     '请把输入的结构化网页正文改写成适合听的口语稿，但不能改变事实、顺序、警告和结论。',
-    '代码块默认只解释作用，不逐字念原文。',
+    policy.codeStrategy === 'skip' ? '遇到代码块时请直接跳过，不要输出任何代码相关段落。' : '代码块默认只解释作用，不逐字念原文。',
     '你必须只输出 JSON，格式为 {"segments":[{"id":"","sectionTitle":"","spokenText":"","sourceBlockIds":[],"kind":"main|code-summary|warning"}]}。'
   ].join('\n');
 
@@ -79,7 +94,8 @@ export function buildRewriteRequest(
       tone: policy.tone,
       preserveFacts: policy.preserveFacts,
       maxSegmentChars: policy.maxSegmentChars ?? 220,
-      truncated: selectedBlocks.length < blocks.length,
+      truncated: selectedBlocks.length < rewriteBlocks.length,
+      codeStrategy: policy.codeStrategy ?? 'summary',
       blocks: selectedBlocks
     },
     null,
@@ -87,7 +103,7 @@ export function buildRewriteRequest(
   );
 
   return {
-    url: `${trimSlash(provider.baseUrl)}/chat/completions`,
+    url: `${resolveLlmBaseUrl(provider.baseUrl)}/chat/completions`,
     init: {
       method: 'POST',
       headers: resolveHeaders(provider),
