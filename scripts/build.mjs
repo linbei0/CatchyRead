@@ -21,9 +21,9 @@ const common = {
 };
 
 const entryPoints = [
-  { entryPoints: ['src/background/index.ts'], outfile: 'dist/background.js' },
-  { entryPoints: ['src/content/index.ts'], outfile: 'dist/content.js' },
-  { entryPoints: ['src/options/index.ts'], outfile: 'dist/options.js' }
+  { entryPoints: ['src/app/background/index.ts'], outfile: 'dist/background.js' },
+  { entryPoints: ['src/app/content/index.ts'], outfile: 'dist/content.js' },
+  { entryPoints: ['src/app/options/index.ts'], outfile: 'dist/options.js' }
 ];
 
 const manifest = createManifest();

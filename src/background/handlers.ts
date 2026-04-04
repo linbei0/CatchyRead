@@ -1,5 +1,6 @@
-import type { ProviderTestResult } from '@/lib/shared/types';
-import type { RuntimeMessage } from '@/lib/shared/messages';
+import { createRuntimeMessageRouter, type ProviderGateway, type SettingsRepository, type UiPreferencesRepository } from '@/background/runtime-message-router';
+import type { ProviderTestResult } from '@/shared/types';
+import type { RuntimeMessage } from '@/shared/messages';
 import type { fetchRemoteTtsAudio, fetchRewriteSegments } from '@/lib/providers/openaiCompatible';
 import type { loadSettings, saveSettings } from '@/lib/storage/settings';
 import type { updateUiPreferences } from '@/lib/storage/ui-preferences';
@@ -18,46 +19,31 @@ export async function handleRuntimeMessage(
   message: RuntimeMessage,
   deps: RuntimeMessageDependencies
 ): Promise<unknown> {
-  switch (message.type) {
-    case 'catchyread/open-options':
-      await deps.openOptionsPage();
-      return { ok: true };
-    case 'catchyread/test-provider':
-      return deps.testProviderConnectivity(message.payload.providerKind);
-    case 'catchyread/preview-tts-sample': {
-      const settings = await deps.loadSettings();
-      const audio = await deps.fetchRemoteTtsAudio(settings.providers.tts, message.payload.text, {
+  const settingsRepository: SettingsRepository = {
+    load: deps.loadSettings,
+    save: deps.saveSettings
+  };
+  const uiPreferencesRepository: UiPreferencesRepository = {
+    update: deps.updateUiPreferences
+  };
+  const providerGateway: ProviderGateway = {
+    rewrite: (provider, payload) => deps.fetchRewriteSegments(provider, payload.blocks, payload.policy),
+    synthesizeRemote: (provider, payload) =>
+      deps.fetchRemoteTtsAudio(provider, payload.text, {
+        voiceId: payload.voiceId,
+        rate: payload.rate
+      }),
+    previewTtsSample: (provider, text) =>
+      deps.fetchRemoteTtsAudio(provider, text, {
         rate: 1,
-        voiceId: settings.providers.tts.voiceId
-      });
-      return { audio };
-    }
-    case 'catchyread/save-ui-state':
-      return {
-        ui: await deps.updateUiPreferences(message.payload)
-      };
-    case 'catchyread/get-settings':
-      return {
-        settings: await deps.loadSettings()
-      };
-    case 'catchyread/save-settings':
-      return {
-        settings: await deps.saveSettings(message.payload)
-      };
-    case 'catchyread/rewrite': {
-      const settings = await deps.loadSettings();
-      const segments = await deps.fetchRewriteSegments(settings.providers.llm, message.payload.blocks, message.payload.policy);
-      return { segments };
-    }
-    case 'catchyread/synthesize-remote': {
-      const settings = await deps.loadSettings();
-      const audio = await deps.fetchRemoteTtsAudio(settings.providers.tts, message.payload.text, {
-        voiceId: message.payload.voiceId,
-        rate: message.payload.rate
-      });
-      return { audio };
-    }
-    default:
-      return undefined;
-  }
+        voiceId: provider.voiceId
+      }),
+    testConnectivity: deps.testProviderConnectivity
+  };
+  return createRuntimeMessageRouter({
+    openOptionsPage: deps.openOptionsPage,
+    settingsRepository,
+    uiPreferencesRepository,
+    providerGateway
+  })(message);
 }
