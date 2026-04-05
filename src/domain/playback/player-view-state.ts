@@ -56,9 +56,11 @@ export function buildPlaybackViewState(args: {
   playbackStatus: PlaybackStatus;
   progressMode: PlaybackProgressMode;
 }): PlaybackViewState {
-  const currentSegment = args.segments[args.currentIndex];
+  const safeIndex = Math.min(Math.max(args.currentIndex, 0), Math.max(args.segments.length - 1, 0));
+  const currentSegment = args.segments[safeIndex];
   const total = args.segments.length;
-  const currentNumber = total ? Math.min(args.currentIndex + 1, total) : 0;
+  const currentNumber = total ? Math.min(safeIndex + 1, total) : 0;
+  const previewSource = currentSegment ? [currentSegment] : [];
 
   return {
     currentTitle: currentSegment?.sectionTitle || '还没有开始收听',
@@ -66,12 +68,12 @@ export function buildPlaybackViewState(args: {
     positionLabel: `${String(currentNumber).padStart(2, '0')} / ${String(total).padStart(2, '0')}`,
     statusLabel: mapStatusLabel(args.playbackStatus, args.progressMode),
     showPagePicker: args.playbackStatus === 'idle' || args.playbackStatus === 'paused' || args.playbackStatus === 'error',
-    previewItems: args.segments.map((segment, index) => ({
+    previewItems: previewSource.map((segment) => ({
       id: segment.id,
       title: segment.sectionTitle,
       summary: trimSummary(segment.spokenText, 52),
       tone: mapSegmentTone(segment),
-      active: index === args.currentIndex
+      active: true
     }))
   };
 }

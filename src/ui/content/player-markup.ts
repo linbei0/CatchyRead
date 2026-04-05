@@ -3,7 +3,6 @@ import type { PreviewItemViewState } from '@/domain/playback/player-view-state';
 export function renderPreviewButton(
   documentRef: Document,
   item: PreviewItemViewState,
-  activeIndex: number,
   index: number
 ): HTMLButtonElement {
   const button = documentRef.createElement('button');
@@ -13,6 +12,8 @@ export function renderPreviewButton(
   button.setAttribute('role', 'option');
   button.setAttribute('aria-selected', String(item.active));
   button.tabIndex = item.active ? 0 : -1;
+  button.title = item.summary;
+  button.setAttribute('aria-label', `${item.title}：${item.summary}`);
 
   const sectionLabel = documentRef.createElement('small');
   sectionLabel.textContent = item.tone === 'warning' ? '提醒' : item.tone === 'code' ? '代码摘要' : '正文';
@@ -24,7 +25,6 @@ export function renderPreviewButton(
   summary.textContent = item.summary;
 
   button.dataset.index = String(index);
-  button.dataset.activeIndex = String(activeIndex);
   button.append(sectionLabel, title, summary);
   return button;
 }

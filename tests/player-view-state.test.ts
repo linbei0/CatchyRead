@@ -32,12 +32,13 @@ describe('buildPlaybackViewState', () => {
     expect(state.currentTitle).toBe('风险提醒');
     expect(state.positionLabel).toBe('02 / 02');
     expect(state.statusLabel).toBe('播放中');
-    expect(state.previewItems[1]).toMatchObject({
+    expect(state.previewItems).toHaveLength(1);
+    expect(state.previewItems[0]).toMatchObject({
       title: '风险提醒',
       tone: 'warning',
       active: true
     });
-    expect(state.previewItems[1].summary.length).toBeLessThanOrEqual(52);
+    expect(state.previewItems[0].summary.length).toBeLessThanOrEqual(52);
   });
 
   test('仅在待机或暂停时显示页面定位入口', () => {

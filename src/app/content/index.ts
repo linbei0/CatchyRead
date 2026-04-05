@@ -202,7 +202,7 @@ class ContentApp {
     this.view.on('previewSelect', (index: number) => {
       this.currentIndex = index;
       this.renderPreview();
-      this.view.focusPreview(index);
+      this.view.focusPreview();
       if (this.speaking) {
         void this.playCurrent();
       } else {
@@ -277,8 +277,11 @@ class ContentApp {
         previousSettings.playback.outputLanguage !== settings.playback.outputLanguage ||
         previousSettings.playback.outputLocale !== settings.playback.outputLocale
       );
+    const playbackChanged =
+      !!previousSettings && JSON.stringify(previousSettings.playback) !== JSON.stringify(settings.playback);
+    const rateChanged = !!previousSettings && previousSettings.playback.rate !== settings.playback.rate;
 
-    if (!options.external || !this.speaking) {
+    if (!previousSettings || !options.external || (playbackChanged && !this.speaking)) {
       this.currentMode = settings.playback.mode;
       this.currentCodeStrategy = settings.playback.codeStrategy;
       this.currentSpeechEngine = settings.playback.speechEngine;
@@ -301,9 +304,9 @@ class ContentApp {
     this.view.setCollapsed(settings.ui.collapsed);
     this.view.setPosition(settings.ui.x, settings.ui.y);
 
-    if (this.currentSpeechEngine === 'remote' && this.remoteAudio.hasSource) {
+    if (rateChanged && this.currentSpeechEngine === 'remote' && this.remoteAudio.hasSource) {
       this.remoteAudio.setRate(settings.playback.rate);
-    } else if (this.browserSpeech.hasActiveUtterance) {
+    } else if (rateChanged && this.browserSpeech.hasActiveUtterance) {
       this.browserSpeech.updateRate(settings.playback.rate);
     }
 
@@ -762,7 +765,7 @@ class ContentApp {
       progressMode: this.playbackState.progressMode
     });
     this.view.setMode(this.currentMode);
-    this.view.renderPreview(viewState.previewItems, this.currentIndex, this.pageSnapshotStale, '内容已变更，建议刷新');
+    this.view.renderPreview(viewState.previewItems, this.currentIndex, segments.length, this.pageSnapshotStale, '内容已变更');
     this.renderPlaybackChrome();
   }
 
@@ -912,7 +915,7 @@ class ContentApp {
     }
     event.preventDefault();
     if (action.nextIndex !== currentPreviewIndex) {
-      this.view.focusPreview(action.nextIndex);
+      this.view.focusPreview();
       return;
     }
     if (action.activate) {
@@ -926,7 +929,7 @@ class ContentApp {
     if (!this.capabilities.pointerEventsSupported || !root || !host) {
       return;
     }
-    const dragbar = root.querySelector<HTMLElement>('.dragbar');
+    const dragbar = root.querySelector<HTMLElement>('.topbar');
     if (!dragbar || dragbar.dataset.dragBound === 'true') {
       return;
     }
@@ -938,7 +941,7 @@ class ContentApp {
     let baseTop = 0;
 
     dragbar.addEventListener('pointerdown', (event) => {
-      if ((event.target as HTMLElement)?.closest('button')) {
+      if ((event.target as HTMLElement)?.closest('button, select, option')) {
         return;
       }
       dragging = true;
