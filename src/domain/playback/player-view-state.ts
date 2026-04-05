@@ -60,20 +60,18 @@ export function buildPlaybackViewState(args: {
   const currentSegment = args.segments[safeIndex];
   const total = args.segments.length;
   const currentNumber = total ? Math.min(safeIndex + 1, total) : 0;
-  const previewSource = currentSegment ? [currentSegment] : [];
-
   return {
     currentTitle: currentSegment?.sectionTitle || '还没有开始收听',
     currentSummary: currentSegment ? trimSummary(currentSegment.spokenText, 30) : '选好模式后开始收听。',
     positionLabel: `${String(currentNumber).padStart(2, '0')} / ${String(total).padStart(2, '0')}`,
     statusLabel: mapStatusLabel(args.playbackStatus, args.progressMode),
     showPagePicker: args.playbackStatus === 'idle' || args.playbackStatus === 'paused' || args.playbackStatus === 'error',
-    previewItems: previewSource.map((segment) => ({
+    previewItems: args.segments.map((segment, index) => ({
       id: segment.id,
       title: segment.sectionTitle,
       summary: trimSummary(segment.spokenText, 52),
       tone: mapSegmentTone(segment),
-      active: true
+      active: index === safeIndex
     }))
   };
 }

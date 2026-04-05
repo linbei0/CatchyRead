@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 
 import { renderPreviewButton } from '@/content/playerMarkup';
@@ -38,18 +38,22 @@ describe('buildPlayerViewCss', () => {
   test('采用固定高度 popup 感面板，并通过悬浮更多面板避免内部滚动条', () => {
     const css = buildPlayerViewCss();
 
-    expect(css).toContain('height: min(680px, calc(100vh - 16px))');
+    expect(css).toContain('height: min(612px, calc(100vh - 16px))');
     expect(css).toContain('overflow: clip');
     expect(css).toContain('.more-panel {');
     expect(css).toContain('position: absolute;');
-    expect(css).toContain('.collapsed .hero, .collapsed .preview-shell, .collapsed .secondary-controls { display: none; }');
+    expect(css).toContain('.queue-panel {');
+    expect(css).toContain('grid-template-rows: auto minmax(0, 1fr)');
+    expect(css).toContain('overflow: hidden;');
+    expect(css).toContain('overflow-y: auto;');
+    expect(css).toContain('.collapsed .hero, .collapsed .secondary-controls { display: none; }');
     expect(css).toContain('.collapsed .collapsed-strip { display: grid; }');
     expect(css).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))');
   });
 });
 
 describe('PlayerView', () => {
-  test('只渲染单条队列预告，并提供图标按钮的可访问标签', () => {
+  test('状态卡作为段落面板入口，并提供主控按钮的可访问标签', () => {
     const dom = new JSDOM('<!doctype html><html><body></body></html>');
     const view = new PlayerView(dom.window.document);
 
@@ -78,12 +82,55 @@ describe('PlayerView', () => {
     );
 
     const root = view.getRoot();
-    expect(root?.querySelectorAll('#preview button').length).toBe(1);
-    expect(root?.querySelector('#preview button strong')?.textContent).toBe('风险提醒');
+    expect(root?.querySelector('#queue-trigger .notice-title')?.textContent).toBe('点击查看全部段落');
     expect(root?.querySelector('#preview-meta')?.textContent).toBe('02 / 02');
     expect(root?.querySelector<HTMLButtonElement>('#prev')?.getAttribute('aria-label')).toBe('上一段');
     expect(root?.querySelector<HTMLButtonElement>('#play-pause')?.getAttribute('aria-label')).toBe('开始收听');
     expect(root?.querySelector<HTMLButtonElement>('#next')?.getAttribute('aria-label')).toBe('下一段');
+  });
+
+  test('点击状态卡会打开悬浮段落面板并列出全部段落', () => {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>');
+    const view = new PlayerView(dom.window.document);
+
+    view.show();
+    view.renderPreview(
+      [
+        { id: 'seg-1', title: '环境准备', summary: '先确认 Node 版本。', tone: 'main', active: false },
+        { id: 'seg-2', title: '风险提醒', summary: '不要把密钥提交到仓库。', tone: 'warning', active: true }
+      ],
+      1,
+      2,
+      false,
+      '内容已变更'
+    );
+
+    const root = view.getRoot()!;
+    const trigger = root.querySelector<HTMLButtonElement>('#queue-trigger')!;
+    trigger.click();
+
+    expect(root.querySelector('.panel')?.classList.contains('queue-open')).toBe(true);
+    expect(root.querySelectorAll('#queue-panel button[data-index]').length).toBe(2);
+  });
+
+  test('拖动进度条时会把比例回传给视图层处理', () => {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>');
+    const view = new PlayerView(dom.window.document);
+    const onSeek = vi.fn();
+
+    view.on('progressSeek', onSeek as never);
+    view.show();
+
+    const root = view.getRoot()!;
+    const track = root.querySelector<HTMLElement>('#progress-track')!;
+    Object.defineProperty(track, 'getBoundingClientRect', {
+      value: () => ({ left: 10, width: 200 }),
+      configurable: true
+    });
+
+    track.dispatchEvent(new dom.window.MouseEvent('mousedown', { clientX: 110, bubbles: true }));
+
+    expect(onSeek).toHaveBeenCalledWith(0.5);
   });
 
   test('折叠后进入迷你播放器态而不是仅隐藏少量区块', () => {

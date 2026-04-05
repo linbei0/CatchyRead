@@ -58,6 +58,17 @@ export class RemoteAudioSession {
     this.audio.playbackRate = rate;
   }
 
+  seekTo(seconds: number): void {
+    if (!Number.isFinite(seconds)) {
+      return;
+    }
+    this.audio.currentTime = Math.max(0, seconds);
+    this.events.onTimeUpdate(
+      this.audio.currentTime,
+      Number.isFinite(this.audio.duration) ? this.audio.duration : undefined
+    );
+  }
+
   stop(): void {
     this.audio.pause();
     this.audio.removeAttribute('src');

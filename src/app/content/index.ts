@@ -199,6 +199,7 @@ class ContentApp {
       }
       this.renderPlaybackChrome();
     });
+    this.view.on('progressSeek', (ratio: number) => this.seekToProgress(ratio));
     this.view.on('previewSelect', (index: number) => {
       this.currentIndex = index;
       this.renderPreview();
@@ -556,6 +557,44 @@ class ContentApp {
     });
     this.speaking = true;
     this.setPlaybackStatus('playing');
+  }
+
+  private seekToProgress(ratio: number): void {
+    const clampedRatio = Math.max(0, Math.min(1, ratio));
+    const segments = this.playbackSource();
+    if (!segments.length) {
+      return;
+    }
+
+    if (
+      this.playbackState.progressMode === 'media-time' &&
+      this.currentSpeechEngine === 'remote' &&
+      this.playbackState.durationSeconds &&
+      this.playbackState.durationSeconds > 0
+    ) {
+      this.remoteAudio.seekTo(this.playbackState.durationSeconds * clampedRatio);
+      this.playbackState.currentTimeSeconds = this.playbackState.durationSeconds * clampedRatio;
+      this.renderPlaybackChrome();
+      return;
+    }
+
+    const targetIndex = Math.min(segments.length - 1, Math.max(0, Math.round((segments.length - 1) * clampedRatio)));
+    if (targetIndex === this.currentIndex) {
+      return;
+    }
+    this.currentIndex = targetIndex;
+    this.renderPreview();
+    if (this.speaking) {
+      void this.playCurrent();
+      return;
+    }
+    const item = segments[targetIndex];
+    this.setNotice({
+      category: 'info',
+      title: '起点已经换好',
+      message: item ? `下一次会从「${item.sectionTitle}」开始。` : '下一次会从新的位置开始。',
+      recommendedAction: '现在点“开始收听”即可。'
+    });
   }
 
   private buildRewritePayload(blocks: StructuredBlock[], requestId: string, snapshotRevision: number) {

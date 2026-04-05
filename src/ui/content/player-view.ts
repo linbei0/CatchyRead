@@ -21,6 +21,7 @@ type PlayerViewHandlers = {
   speechEngineChange?: (speechEngine: SpeechEngine) => void;
   rateChange?: (rate: number) => void;
   previewSelect?: (index: number) => void;
+  progressSeek?: (ratio: number) => void;
   keydown?: (event: KeyboardEvent) => void;
 };
 
@@ -106,10 +107,14 @@ function createTemplate(documentRef: Document): HTMLDivElement {
         </div>
         <div class="headline-stack">
           <h3 id="current-title">还没有开始收听</h3>
-          <div class="notice compact" id="status"></div>
+          <div class="queue-wrap" id="queue-wrap">
+            <button class="notice compact queue-trigger" id="queue-trigger" type="button" aria-haspopup="dialog" aria-expanded="false">
+              <span class="queue-trigger-copy">点这里查看全部段落</span>
+            </button>
+          </div>
         </div>
         <div class="progress">
-          <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+          <div class="progress-track" id="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
           <div class="progress-meta" id="progress-meta"><span>准备就绪</span><span>等待开始</span></div>
         </div>
       </section>
@@ -119,19 +124,6 @@ function createTemplate(documentRef: Document): HTMLDivElement {
         ${iconOnlyButton('play-pause', 'play', '开始收听', 'transport-button primary')}
         ${iconOnlyButton('next', 'next', '下一段', 'transport-button')}
       </div>
-
-      <section class="preview-shell">
-        <div class="preview-head">
-          <span class="preview-label">接下来</span>
-          <div class="preview-toolbar">
-            ${iconOnlyButton('preview-prev', 'chevron-left', '上一条预告', 'preview-nav')}
-            <span id="preview-meta">00 / 00</span>
-            ${iconOnlyButton('preview-next', 'chevron-right', '下一条预告', 'preview-nav')}
-          </div>
-        </div>
-        <div class="preview" id="preview"></div>
-      </section>
-
       <div class="secondary-controls">
         ${compactActionButton('refresh-page', 'refresh', '刷新')}
         ${compactActionButton('pick-from-page', 'locate', '定位')}
@@ -160,6 +152,17 @@ function createTemplate(documentRef: Document): HTMLDivElement {
           </div>
         </div>
       </div>
+
+      <div class="queue-panel" id="queue-panel" role="dialog" aria-label="全部段落" aria-modal="false">
+        <div class="queue-panel-head">
+          <strong>全部段落</strong>
+          <div class="queue-panel-meta">
+            <span id="preview-meta">00 / 00</span>
+            ${iconOnlyButton('queue-close', 'close', '关闭段落面板', 'queue-close')}
+          </div>
+        </div>
+        <div class="preview" id="preview"></div>
+      </div>
     </div>
   `;
   return root;
@@ -185,7 +188,7 @@ export function buildPlayerViewCss(): string {
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     .panel {
       width: min(392px, calc(100vw - 24px));
-      height: min(680px, calc(100vh - 16px));
+      height: min(612px, calc(100vh - 16px));
       overflow: clip;
       position: relative;
       display: grid;
@@ -198,7 +201,7 @@ export function buildPlayerViewCss(): string {
       border: 1px solid rgba(255,255,255,.08);
       box-shadow: 0 18px 52px rgba(0,0,0,.38);
     }
-    .topbar, .toolbar-actions, .hero-row, .status-meta, .preview-head, .preview-toolbar, .secondary-controls { display: flex; align-items: center; }
+    .topbar, .toolbar-actions, .hero-row, .status-meta, .secondary-controls, .queue-panel-head { display: flex; align-items: center; }
     .topbar { justify-content: space-between; gap: 12px; cursor: move; }
     .brand { display: grid; gap: 2px; min-width: 0; }
     .eyebrow { color: #f5b56f; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; }
@@ -264,17 +267,41 @@ export function buildPlayerViewCss(): string {
     .state-badge[data-tone="danger"] { background: rgba(255,139,123,.16); color: #ffb5a9; }
     .headline-stack { display: grid; gap: 8px; min-height: 72px; }
     #current-title { font-size: 24px; line-height: 1.1; letter-spacing: -.03em; text-wrap: balance; }
+    .queue-wrap { position: relative; }
     .notice {
       display: grid; gap: 4px; min-height: 44px; padding: 10px 12px;
       border-radius: 16px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
     }
+    .queue-trigger { width: 100%; text-align: left; position: relative; }
+    .queue-panel {
+      position: absolute;
+      inset: 56px 14px 84px 14px;
+      z-index: 3;
+      display: none;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 10px;
+      overflow: hidden;
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(11, 16, 25, .98);
+      border: 1px solid rgba(255,255,255,.1);
+      box-shadow: 0 18px 40px rgba(0,0,0,.36);
+    }
+    .panel.queue-open .queue-panel { display: grid; }
+    .queue-panel-head { justify-content: space-between; gap: 8px; color: #aeb7c8; font-size: 12px; }
+    .queue-panel-meta { display: inline-flex; align-items: center; gap: 8px; }
+    .queue-close { width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; }
+    .panel.queue-open .hero,
+    .panel.queue-open .transport,
+    .panel.queue-open .secondary-controls { opacity: .18; pointer-events: none; }
+    .panel.queue-open .queue-trigger { opacity: .28; }
     .notice.compact { align-content: center; }
     .notice[data-tone="danger"] { border-color: rgba(255,139,123,.28); background: rgba(255,139,123,.08); }
     .notice[data-tone="success"] { border-color: rgba(134,211,158,.24); background: rgba(134,211,158,.08); }
     .notice-title { font-size: 13px; font-weight: 600; }
     .notice-body, .notice-action, details { font-size: 12px; color: #c7cede; }
     .progress { display: grid; gap: 6px; }
-    .progress-track { height: 7px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); }
+    .progress-track { height: 7px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); cursor: pointer; }
     .progress-fill { height: 100%; width: 0%; border-radius: inherit; background: linear-gradient(90deg, #f5b56f, #ffd59f); }
     .progress-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #aab3c4; }
     .transport { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
@@ -289,36 +316,46 @@ export function buildPlayerViewCss(): string {
       color: #1d1307; border-color: transparent;
       box-shadow: 0 10px 20px rgba(245,181,111,.24);
     }
-    .preview-shell {
-      display: grid; gap: 8px; padding-top: 2px;
-      border-top: 1px solid rgba(255,255,255,.06);
-    }
-    .preview-head { justify-content: space-between; gap: 10px; min-height: 32px; }
-    .preview-label { font-size: 12px; color: #9ea8bc; text-transform: uppercase; letter-spacing: .12em; }
-    .preview-toolbar { gap: 6px; color: #aeb7c8; font-size: 12px; }
     .preview {
-      min-height: 70px;
+      min-height: 0;
       display: grid;
-      align-items: stretch;
+      grid-auto-rows: max-content;
+      align-content: start;
+      gap: 6px;
+      overflow-y: auto;
+      padding-right: 4px;
     }
     .preview button {
       width: 100%;
       text-align: left;
       display: grid;
-      gap: 4px;
-      padding: 12px 14px;
-      border-radius: 18px;
-      border-left: 3px solid transparent;
-      background: rgba(255,255,255,.03);
+      gap: 2px;
+      padding: 9px 11px;
+      border-radius: 12px;
+      border-left: 2px solid transparent;
+      background: rgba(255,255,255,.025);
     }
     .preview button[data-tone="main"] { border-left-color: rgba(245,181,111,.58); }
     .preview button[data-tone="warning"] { border-left-color: rgba(240,198,106,.8); }
     .preview button[data-tone="code"] { border-left-color: rgba(126,179,255,.8); }
     .preview button.active { background: rgba(255,255,255,.07); border-color: rgba(245,181,111,.2); }
-    .preview small, .preview strong, .preview span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .preview small { color: #97a0b4; font-size: 11px; text-transform: uppercase; }
-    .preview strong { font-size: 16px; line-height: 1.2; }
-    .preview span { color: #c3cad9; font-size: 12px; }
+    .preview small { color: #97a0b4; font-size: 10px; text-transform: uppercase; }
+    .preview strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+    .preview span {
+      color: #c3cad9;
+      font-size: 11px;
+      line-height: 1.3;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
     .secondary-controls {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -373,7 +410,7 @@ export function buildPlayerViewCss(): string {
     }
     .control-label .icon { width: 16px; height: 16px; }
     .stale-tip { color: #f0c66a; }
-    .collapsed .hero, .collapsed .preview-shell, .collapsed .secondary-controls { display: none; }
+    .collapsed .hero, .collapsed .secondary-controls { display: none; }
     .collapsed .collapsed-strip { display: grid; }
     .collapsed .panel { height: auto; grid-template-rows: auto auto auto; gap: 10px; }
     .collapsed .transport { grid-template-columns: repeat(3, minmax(0, 72px)); justify-content: space-between; }
@@ -432,18 +469,19 @@ export class PlayerView {
     findElement<HTMLButtonElement>(this.root, '#prev').addEventListener('click', () => this.handlers.previous?.());
     findElement<HTMLButtonElement>(this.root, '#next').addEventListener('click', () => this.handlers.next?.());
     findElement<HTMLButtonElement>(this.root, '#settings').addEventListener('click', () => this.handlers.openSettings?.());
-    findElement<HTMLButtonElement>(this.root, '#preview-prev').addEventListener('click', () => {
-      const currentIndex = Number(this.preview?.dataset.currentIndex || '0');
-      if (currentIndex > 0) {
-        this.handlers.previewSelect?.(currentIndex - 1);
-      }
+    findElement<HTMLButtonElement>(this.root, '#queue-trigger').addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const panel = this.root?.querySelector('.panel');
+      const expanded = !panel?.classList.contains('queue-open');
+      panel?.classList.toggle('queue-open', expanded);
+      (event.currentTarget as HTMLButtonElement).setAttribute('aria-expanded', String(expanded));
     });
-    findElement<HTMLButtonElement>(this.root, '#preview-next').addEventListener('click', () => {
-      const currentIndex = Number(this.preview?.dataset.currentIndex || '0');
-      const totalCount = Number(this.preview?.dataset.totalCount || '0');
-      if (currentIndex < totalCount - 1) {
-        this.handlers.previewSelect?.(currentIndex + 1);
-      }
+    findElement<HTMLButtonElement>(this.root, '#queue-close').addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.root?.querySelector('.panel')?.classList.remove('queue-open');
+      this.root?.querySelector<HTMLButtonElement>('#queue-trigger')?.setAttribute('aria-expanded', 'false');
     });
     this.root.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((button) =>
       button.addEventListener('click', () => {
@@ -475,10 +513,37 @@ export class PlayerView {
       }
       const button = target.closest<HTMLButtonElement>('button[data-index]');
       if (button) {
+        this.root?.querySelector('.panel')?.classList.remove('queue-open');
+        this.root?.querySelector<HTMLButtonElement>('#queue-trigger')?.setAttribute('aria-expanded', 'false');
         this.handlers.previewSelect?.(Number(button.dataset.index || 0));
       }
     });
+    const progressTrack = findElement<HTMLDivElement>(this.root, '#progress-track');
+    const seekFromClientX = (clientX: number) => {
+      const rect = progressTrack.getBoundingClientRect();
+      if (!rect.width) {
+        return;
+      }
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      this.handlers.progressSeek?.(ratio);
+    };
+    progressTrack.addEventListener('mousedown', (event) => {
+      seekFromClientX(event.clientX);
+    });
+    progressTrack.addEventListener('pointerdown', (event) => {
+      seekFromClientX(event.clientX);
+    });
     this.root.addEventListener('keydown', (event) => this.handlers.keydown?.(event));
+    this.root.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (!target.closest('#queue-panel') && !target.closest('#queue-trigger')) {
+        this.root?.querySelector('.panel')?.classList.remove('queue-open');
+        this.root?.querySelector<HTMLButtonElement>('#queue-trigger')?.setAttribute('aria-expanded', 'false');
+      }
+    });
   }
 
   on(event: keyof PlayerViewHandlers, handler: PlayerViewHandlers[keyof PlayerViewHandlers]): void {
@@ -671,28 +736,28 @@ export class PlayerView {
     this.preview.dataset.currentIndex = String(currentIndex);
     this.preview.dataset.totalCount = String(totalCount);
     const previewMeta = this.root?.querySelector<HTMLSpanElement>('#preview-meta');
+    const queueTrigger = this.root?.querySelector<HTMLButtonElement>('#queue-trigger');
     if (previewMeta) {
       previewMeta.textContent = stale
         ? staleLabel
         : `${String(Math.min(currentIndex + 1, totalCount || 1)).padStart(2, '0')} / ${String(totalCount).padStart(2, '0')}`;
       previewMeta.classList.toggle('stale-tip', stale);
     }
-    const prevButton = this.root?.querySelector<HTMLButtonElement>('#preview-prev');
-    const nextButton = this.root?.querySelector<HTMLButtonElement>('#preview-next');
-    if (prevButton) {
-      prevButton.disabled = currentIndex <= 0;
-    }
-    if (nextButton) {
-      nextButton.disabled = currentIndex >= totalCount - 1;
+    if (queueTrigger) {
+      queueTrigger.disabled = totalCount === 0;
+      queueTrigger.innerHTML = `
+        <div class="notice-title">${stale ? staleLabel : '点击查看全部段落'}</div>
+        <div class="notice-body">${totalCount ? `当前定位在第 ${currentIndex + 1} 段，共 ${totalCount} 段。` : '当前还没有可展示的段落。'}</div>
+        ${totalCount ? '<div class="notice-action">选择任意段落即可切换起点或直接跳转。</div>' : ''}
+      `;
     }
     if (stale) {
       this.preview.dataset.stale = 'true';
     } else {
       delete this.preview.dataset.stale;
     }
-    const visibleItem = items.find((item) => item.active) || items[0];
-    if (visibleItem) {
-      this.preview.append(renderPreviewButton(this.documentRef, visibleItem, currentIndex));
-    }
+    items.forEach((item, index) => {
+      this.preview?.append(renderPreviewButton(this.documentRef, item, index));
+    });
   }
 }
