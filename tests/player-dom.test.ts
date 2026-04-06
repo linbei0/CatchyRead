@@ -38,7 +38,7 @@ describe('buildPlayerViewCss', () => {
   test('采用固定高度 popup 感面板，并通过悬浮更多面板避免内部滚动条', () => {
     const css = buildPlayerViewCss();
 
-    expect(css).toContain('height: min(612px, calc(100vh - 16px))');
+    expect(css).toContain('height: min(540px, calc(100vh - 10px))');
     expect(css).toContain('overflow: clip');
     expect(css).toContain('.more-panel {');
     expect(css).toContain('position: absolute;');
@@ -49,6 +49,27 @@ describe('buildPlayerViewCss', () => {
     expect(css).toContain('.collapsed .hero, .collapsed .secondary-controls { display: none; }');
     expect(css).toContain('.collapsed .collapsed-strip { display: grid; }');
     expect(css).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))');
+  });
+
+  test('紧凑模式收紧主面板与控制区尺寸', () => {
+    const css = buildPlayerViewCss();
+
+    expect(css).toContain('width: min(364px, calc(100vw - 18px))');
+    expect(css).toContain('height: min(540px, calc(100vh - 10px))');
+    expect(css).toContain('gap: 7px;');
+    expect(css).toContain('padding: 10px;');
+    expect(css).toContain('.title { font-size: 16px; line-height: 1.1; }');
+    expect(css).toContain('.hero {\n      display: grid; gap: 8px;');
+    expect(css).toContain('padding: 12px;');
+    expect(css).toContain('#current-title { font-size: 21px; line-height: 1.12;');
+    expect(css).toContain('.notice {\n      display: grid; gap: 3px; min-height: 40px; padding: 8px 10px;');
+    expect(css).toContain('.progress { display: grid; gap: 4px; }');
+    expect(css).toContain('.transport { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }');
+    expect(css).toContain('.transport-button {\n      min-height: 44px; border-radius: 16px; padding: 0;');
+    expect(css).toContain('.secondary-controls {\n      display: grid;\n      grid-template-columns: repeat(4, minmax(0, 1fr));\n      gap: 5px;');
+    expect(css).toContain('padding-top: 6px;');
+    expect(css).toContain('.compact-action {\n      width: 100%;\n      min-height: 30px; padding: 0 8px; border-radius: 11px;');
+    expect(css).toContain('.compact-action span { min-width: 0; font-size: 10px; white-space: nowrap; }');
   });
 });
 

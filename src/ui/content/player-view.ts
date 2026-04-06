@@ -187,37 +187,37 @@ export function buildPlayerViewCss(): string {
     button, select { font: inherit; }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     .panel {
-      width: min(392px, calc(100vw - 24px));
-      height: min(612px, calc(100vh - 16px));
+      width: min(364px, calc(100vw - 18px));
+      height: min(540px, calc(100vh - 10px));
       overflow: clip;
       position: relative;
       display: grid;
       grid-template-rows: auto auto auto auto auto;
-      gap: 10px;
-      border-radius: 26px;
-      padding: 14px;
+      gap: 7px;
+      border-radius: 24px;
+      padding: 10px;
       color: #f5f7fb;
       background: linear-gradient(180deg, rgba(18, 22, 32, .98), rgba(10, 14, 22, .98));
       border: 1px solid rgba(255,255,255,.08);
       box-shadow: 0 18px 52px rgba(0,0,0,.38);
     }
     .topbar, .toolbar-actions, .hero-row, .status-meta, .secondary-controls, .queue-panel-head { display: flex; align-items: center; }
-    .topbar { justify-content: space-between; gap: 12px; cursor: move; }
-    .brand { display: grid; gap: 2px; min-width: 0; }
-    .eyebrow { color: #f5b56f; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; }
+    .topbar { justify-content: space-between; gap: 10px; cursor: move; }
+    .brand { display: grid; gap: 1px; min-width: 0; }
+    .eyebrow { color: #f5b56f; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; }
     .title, h3 { margin: 0; }
-    .title { font-size: 18px; line-height: 1.1; }
-    .toolbar-actions { gap: 8px; }
+    .title { font-size: 16px; line-height: 1.1; }
+    .toolbar-actions { gap: 6px; }
     .mode-pill, .state-badge {
-      display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px;
-      font-size: 12px; background: rgba(245,181,111,.12); color: #ffd59f;
+      display: inline-flex; align-items: center; min-height: 26px; padding: 0 9px; border-radius: 999px;
+      font-size: 11px; background: rgba(245,181,111,.12); color: #ffd59f;
     }
     button {
       cursor: pointer;
-      min-height: 38px;
+      min-height: 36px;
       border: 1px solid rgba(255,255,255,.12);
-      border-radius: 16px;
-      padding: 8px 12px;
+      border-radius: 15px;
+      padding: 7px 11px;
       color: #f5f7fb;
       background: rgba(255,255,255,.035);
       transition: background .16s ease, border-color .16s ease, transform .16s ease, color .16s ease;
@@ -228,61 +228,61 @@ export function buildPlayerViewCss(): string {
     button:disabled { cursor: wait; opacity: .58; }
     .icon { width: 18px; height: 18px; flex: none; }
     .toolbar-icon, .preview-nav {
-      width: 38px; height: 38px; min-height: 38px; padding: 0; border-radius: 14px;
+      width: 34px; height: 34px; min-height: 34px; padding: 0; border-radius: 12px;
       display: inline-flex; align-items: center; justify-content: center;
     }
     .toolbar-icon.danger { color: #ffd2cc; }
     .collapsed-strip {
       display: none;
-      gap: 8px;
-      padding: 10px 12px;
-      border-radius: 18px;
+      gap: 6px;
+      padding: 8px 10px;
+      border-radius: 16px;
       background: rgba(255,255,255,.03);
       border: 1px solid rgba(255,255,255,.06);
     }
     .collapsed-meta { display: flex; justify-content: space-between; gap: 8px; align-items: center; color: #aeb6c7; font-size: 12px; }
     #collapsed-title { font-size: 16px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hero {
-      display: grid; gap: 10px;
-      padding: 14px;
-      border-radius: 20px;
+      display: grid; gap: 8px;
+      padding: 12px;
+      border-radius: 18px;
       background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.025));
       border: 1px solid rgba(255,255,255,.06);
     }
-    .hero-row-top { justify-content: space-between; gap: 12px; }
+    .hero-row-top { justify-content: space-between; gap: 10px; }
     .mode-switch {
       display: inline-grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 4px; padding: 4px; border-radius: 999px;
+      gap: 3px; padding: 3px; border-radius: 999px;
       background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
       min-width: 0; flex: 1 1 auto;
     }
     .mode-switch button {
-      min-height: 36px; border: 0; border-radius: 999px; padding: 0 12px;
+      min-height: 32px; border: 0; border-radius: 999px; padding: 0 10px;
       background: transparent; color: #b8c0d4;
     }
     .mode-switch button.active { color: #1d1307; background: linear-gradient(135deg, #f5b56f, #ffd59f); font-weight: 700; }
-    .status-meta { gap: 8px; justify-content: flex-end; color: #aeb6c7; font-size: 12px; white-space: nowrap; }
+    .status-meta { gap: 6px; justify-content: flex-end; color: #aeb6c7; font-size: 11px; white-space: nowrap; }
     .state-badge[data-tone="success"] { background: rgba(134,211,158,.14); color: #9fe0b5; }
     .state-badge[data-tone="warning"] { background: rgba(245,181,111,.16); color: #ffd59f; }
     .state-badge[data-tone="danger"] { background: rgba(255,139,123,.16); color: #ffb5a9; }
-    .headline-stack { display: grid; gap: 8px; min-height: 72px; }
-    #current-title { font-size: 24px; line-height: 1.1; letter-spacing: -.03em; text-wrap: balance; }
+    .headline-stack { display: grid; gap: 6px; min-height: 64px; }
+    #current-title { font-size: 21px; line-height: 1.12; letter-spacing: -.03em; text-wrap: balance; }
     .queue-wrap { position: relative; }
     .notice {
-      display: grid; gap: 4px; min-height: 44px; padding: 10px 12px;
-      border-radius: 16px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
+      display: grid; gap: 3px; min-height: 40px; padding: 8px 10px;
+      border-radius: 14px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
     }
     .queue-trigger { width: 100%; text-align: left; position: relative; }
     .queue-panel {
       position: absolute;
-      inset: 56px 14px 84px 14px;
+      inset: 50px 12px 76px 12px;
       z-index: 3;
       display: none;
       grid-template-rows: auto minmax(0, 1fr);
-      gap: 10px;
+      gap: 8px;
       overflow: hidden;
-      padding: 12px;
-      border-radius: 18px;
+      padding: 10px;
+      border-radius: 16px;
       background: rgba(11, 16, 25, .98);
       border: 1px solid rgba(255,255,255,.1);
       box-shadow: 0 18px 40px rgba(0,0,0,.36);
@@ -290,7 +290,7 @@ export function buildPlayerViewCss(): string {
     .panel.queue-open .queue-panel { display: grid; }
     .queue-panel-head { justify-content: space-between; gap: 8px; color: #aeb7c8; font-size: 12px; }
     .queue-panel-meta { display: inline-flex; align-items: center; gap: 8px; }
-    .queue-close { width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; }
+    .queue-close { width: 28px; height: 28px; min-height: 28px; padding: 0; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; }
     .panel.queue-open .hero,
     .panel.queue-open .transport,
     .panel.queue-open .secondary-controls { opacity: .18; pointer-events: none; }
@@ -298,40 +298,40 @@ export function buildPlayerViewCss(): string {
     .notice.compact { align-content: center; }
     .notice[data-tone="danger"] { border-color: rgba(255,139,123,.28); background: rgba(255,139,123,.08); }
     .notice[data-tone="success"] { border-color: rgba(134,211,158,.24); background: rgba(134,211,158,.08); }
-    .notice-title { font-size: 13px; font-weight: 600; }
-    .notice-body, .notice-action, details { font-size: 12px; color: #c7cede; }
-    .progress { display: grid; gap: 6px; }
-    .progress-track { height: 7px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); cursor: pointer; }
+    .notice-title { font-size: 12px; font-weight: 600; }
+    .notice-body, .notice-action, details { font-size: 11px; line-height: 1.3; color: #c7cede; }
+    .progress { display: grid; gap: 4px; }
+    .progress-track { height: 6px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); cursor: pointer; }
     .progress-fill { height: 100%; width: 0%; border-radius: inherit; background: linear-gradient(90deg, #f5b56f, #ffd59f); }
-    .progress-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #aab3c4; }
-    .transport { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .progress-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: #aab3c4; }
+    .transport { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
     .transport-button {
-      min-height: 56px; border-radius: 20px; padding: 0;
+      min-height: 44px; border-radius: 16px; padding: 0;
       display: inline-flex; align-items: center; justify-content: center;
       background: rgba(255,255,255,.04);
     }
-    .transport-button .icon { width: 24px; height: 24px; }
+    .transport-button .icon { width: 22px; height: 22px; }
     .transport-button.primary {
       background: linear-gradient(135deg, #f5b56f, #ffd59f);
       color: #1d1307; border-color: transparent;
-      box-shadow: 0 10px 20px rgba(245,181,111,.24);
+      box-shadow: 0 6px 14px rgba(245,181,111,.2);
     }
     .preview {
       min-height: 0;
       display: grid;
       grid-auto-rows: max-content;
       align-content: start;
-      gap: 6px;
+      gap: 5px;
       overflow-y: auto;
-      padding-right: 4px;
+      padding-right: 2px;
     }
     .preview button {
       width: 100%;
       text-align: left;
       display: grid;
       gap: 2px;
-      padding: 9px 11px;
-      border-radius: 12px;
+      padding: 8px 10px;
+      border-radius: 11px;
       border-left: 2px solid transparent;
       background: rgba(255,255,255,.025);
     }
@@ -344,12 +344,12 @@ export function buildPlayerViewCss(): string {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 14px;
+      font-size: 13px;
       line-height: 1.2;
     }
     .preview span {
       color: #c3cad9;
-      font-size: 11px;
+      font-size: 10px;
       line-height: 1.3;
       display: -webkit-box;
       overflow: hidden;
@@ -359,25 +359,25 @@ export function buildPlayerViewCss(): string {
     .secondary-controls {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
+      gap: 5px;
       border-top: 1px solid rgba(255,255,255,.06);
-      padding-top: 10px;
+      padding-top: 6px;
     }
     .compact-action {
       width: 100%;
-      min-height: 36px; padding: 0 10px; border-radius: 14px;
-      display: inline-flex; align-items: center; gap: 8px;
+      min-height: 30px; padding: 0 8px; border-radius: 11px;
+      display: inline-flex; align-items: center; gap: 5px;
       justify-content: center;
       color: #dfe5f1;
     }
-    .compact-action span { min-width: 0; font-size: 12px; white-space: nowrap; }
+    .compact-action span { min-width: 0; font-size: 10px; white-space: nowrap; }
     .more { position: relative; }
     .more > .compact-action { width: 100%; justify-content: center; }
     select {
       width: 100%;
-      border-radius: 14px;
+      border-radius: 12px;
       border: 1px solid rgba(255,255,255,.12);
-      padding: 10px 12px;
+      padding: 8px 10px;
       color: #f5f7fb;
       background: rgba(255,255,255,.05);
       color-scheme: dark;
@@ -386,12 +386,12 @@ export function buildPlayerViewCss(): string {
     .more-panel {
       position: absolute;
       right: 0;
-      bottom: calc(100% + 10px);
+      bottom: calc(100% + 8px);
       z-index: 2;
-      width: min(320px, calc(100vw - 48px));
+      width: min(300px, calc(100vw - 40px));
       display: none;
-      padding: 12px;
-      border-radius: 18px;
+      padding: 10px;
+      border-radius: 16px;
       background: rgba(11, 16, 25, .98);
       border: 1px solid rgba(255,255,255,.1);
       box-shadow: 0 18px 40px rgba(0,0,0,.36);
@@ -400,21 +400,21 @@ export function buildPlayerViewCss(): string {
     .more-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
     .more-grid .control-field:last-child { grid-column: 1 / -1; }
-    .control-field { display: grid; gap: 6px; }
+    .control-field { display: grid; gap: 5px; }
     .control-label {
       display: inline-flex; align-items: center; gap: 6px;
-      font-size: 12px; color: #aeb7c8;
+      font-size: 11px; color: #aeb7c8;
     }
     .control-label .icon { width: 16px; height: 16px; }
     .stale-tip { color: #f0c66a; }
     .collapsed .hero, .collapsed .secondary-controls { display: none; }
     .collapsed .collapsed-strip { display: grid; }
-    .collapsed .panel { height: auto; grid-template-rows: auto auto auto; gap: 10px; }
+    .collapsed .panel { height: auto; grid-template-rows: auto auto auto; gap: 7px; }
     .collapsed .transport { grid-template-columns: repeat(3, minmax(0, 72px)); justify-content: space-between; }
-    .collapsed .transport-button { min-height: 50px; border-radius: 16px; }
+    .collapsed .transport-button { min-height: 42px; border-radius: 13px; }
   `;
 }
 
