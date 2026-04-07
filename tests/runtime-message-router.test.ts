@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 import { createRuntimeMessageRouter } from '@/background/runtime-message-router';
 import type { RuntimeMessage } from '@/shared/messages';
-import type { PageSnapshot, RewriteRequestPayload, StructuredBlock } from '@/shared/types';
+import type { PageSnapshot, RewriteRequestPayload, SitePlaybackPreferences, StructuredBlock } from '@/shared/types';
 
 describe('createRuntimeMessageRouter', () => {
   test('按消息类型路由并保持返回结构兼容', async () => {
@@ -44,6 +44,10 @@ describe('createRuntimeMessageRouter', () => {
       uiPreferencesRepository: {
         update: vi.fn().mockResolvedValue({ collapsed: true, x: 10, y: 20 })
       },
+      sitePlaybackPreferencesRepository: {
+        load: vi.fn().mockResolvedValue({ mode: 'original', rate: 1.2 } satisfies SitePlaybackPreferences),
+        save: vi.fn().mockResolvedValue({ mode: 'original', rate: 1.2 } satisfies SitePlaybackPreferences)
+      },
       providerGateway: {
         rewrite: vi.fn().mockResolvedValue([{ id: 'seg-1' }]),
         cancelRewrite: vi.fn().mockResolvedValue(undefined),
@@ -56,6 +60,25 @@ describe('createRuntimeMessageRouter', () => {
     await expect(router({ type: 'catchyread/open-options' } as RuntimeMessage)).resolves.toEqual({ ok: true });
     await expect(router({ type: 'catchyread/save-ui-state', payload: { collapsed: true } } as RuntimeMessage)).resolves.toEqual({
       ui: { collapsed: true, x: 10, y: 20 }
+    });
+    await expect(
+      router({
+        type: 'catchyread/get-site-playback-preferences',
+        payload: { url: 'https://react.dev/reference/react/useEffect' }
+      } as RuntimeMessage)
+    ).resolves.toEqual({
+      playback: { mode: 'original', rate: 1.2 }
+    });
+    await expect(
+      router({
+        type: 'catchyread/save-site-playback-preferences',
+        payload: {
+          url: 'https://react.dev/reference/react/useEffect',
+          playback: { codeStrategy: 'skip' }
+        }
+      } as RuntimeMessage)
+    ).resolves.toEqual({
+      playback: { mode: 'original', rate: 1.2 }
     });
     await expect(router({ type: 'catchyread/rewrite', payload: rewritePayload } as RuntimeMessage)).resolves.toEqual({
       segments: [{ id: 'seg-1' }]

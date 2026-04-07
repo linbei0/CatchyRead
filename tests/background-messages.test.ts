@@ -16,7 +16,9 @@ describe('handleRuntimeMessage', () => {
         fetchRewriteSegments: vi.fn(),
         fetchRemoteTtsAudio: vi.fn(),
         testProviderConnectivity: vi.fn(),
-        updateUiPreferences: vi.fn()
+        updateUiPreferences: vi.fn(),
+        loadSitePlaybackPreferences: vi.fn(),
+        saveSitePlaybackPreferences: vi.fn()
       }
     );
 
@@ -42,7 +44,9 @@ describe('handleRuntimeMessage', () => {
         fetchRewriteSegments: vi.fn(),
         fetchRemoteTtsAudio: vi.fn(),
         testProviderConnectivity,
-        updateUiPreferences: vi.fn()
+        updateUiPreferences: vi.fn(),
+        loadSitePlaybackPreferences: vi.fn(),
+        saveSitePlaybackPreferences: vi.fn()
       }
     );
 
@@ -73,7 +77,9 @@ describe('handleRuntimeMessage', () => {
         fetchRewriteSegments: vi.fn(),
         fetchRemoteTtsAudio: vi.fn(),
         testProviderConnectivity: vi.fn(),
-        updateUiPreferences
+        updateUiPreferences,
+        loadSitePlaybackPreferences: vi.fn(),
+        saveSitePlaybackPreferences: vi.fn()
       }
     );
 

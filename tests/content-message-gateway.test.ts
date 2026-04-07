@@ -36,6 +36,8 @@ describe('BrowserContentMessageGateway', () => {
           }
         } satisfies AppSettings
       })
+      .mockResolvedValueOnce({ playback: { mode: 'original', rate: 1.2 } })
+      .mockResolvedValueOnce({ playback: { mode: 'original', rate: 1.2, codeStrategy: 'skip' } })
       .mockResolvedValueOnce({ segments: [{ id: 's-1' }] })
       .mockResolvedValueOnce({ audio: { mediaUrl: 'https://example.com/audio.mp3' } });
     const gateway = new BrowserContentMessageGateway(send);
@@ -48,6 +50,8 @@ describe('BrowserContentMessageGateway', () => {
     };
 
     await gateway.loadSettings();
+    await gateway.loadSitePlaybackPreferences(snapshot.url);
+    await gateway.saveSitePlaybackPreferences(snapshot.url, { codeStrategy: 'skip' });
     await gateway.rewrite({
       snapshot,
       canonicalBlocks: snapshot.structuredBlocks,
@@ -64,6 +68,21 @@ describe('BrowserContentMessageGateway', () => {
 
     expect(send).toHaveBeenNthCalledWith(1, { type: 'catchyread/get-settings' });
     expect(send).toHaveBeenNthCalledWith(2, {
+      type: 'catchyread/get-site-playback-preferences',
+      payload: {
+        url: 'https://example.com/doc'
+      }
+    });
+    expect(send).toHaveBeenNthCalledWith(3, {
+      type: 'catchyread/save-site-playback-preferences',
+      payload: {
+        url: 'https://example.com/doc',
+        playback: {
+          codeStrategy: 'skip'
+        }
+      }
+    });
+    expect(send).toHaveBeenNthCalledWith(4, {
       type: 'catchyread/rewrite',
       payload: {
         snapshot,
@@ -78,7 +97,7 @@ describe('BrowserContentMessageGateway', () => {
         }
       }
     });
-    expect(send).toHaveBeenNthCalledWith(3, {
+    expect(send).toHaveBeenNthCalledWith(5, {
       type: 'catchyread/synthesize-remote',
       payload: {
         text: 'hello',

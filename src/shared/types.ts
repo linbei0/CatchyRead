@@ -109,6 +109,13 @@ export interface PlaybackPreferences {
   outputLocale?: string;
 }
 
+export interface SitePlaybackPreferences {
+  rate?: number;
+  mode?: ReadingMode;
+  codeStrategy?: CodeStrategy;
+  speechEngine?: SpeechEngine;
+}
+
 export interface UiPreferences {
   collapsed: boolean;
   x: number | null;

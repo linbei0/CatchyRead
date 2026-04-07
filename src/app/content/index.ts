@@ -1,6 +1,7 @@
 import browser from 'webextension-polyfill';
 
 import { RuntimeCacheRegistry } from '@/lib/cache/runtime-cache-registry';
+import { resolvePlaybackPreferences } from '@/lib/storage/site-playback-preferences';
 import { buildSuccessNotice, mapErrorToNotice } from '@/lib/ui/feedback';
 import { assessPageSupport, type PageSupportAssessment } from '@/domain/content/page-support';
 import {
@@ -30,6 +31,7 @@ import type {
   PlaybackStatus,
   ReadingMode,
   RemoteAudioPayload,
+  SitePlaybackPreferences,
   SmartScriptSegment,
   StructuredBlock,
   SpeechEngine,
@@ -98,6 +100,8 @@ class ContentApp {
   private currentMode: ReadingMode = 'smart';
   private currentCodeStrategy: CodeStrategy = 'summary';
   private currentSpeechEngine: SpeechEngine = 'browser';
+  private currentRate = 1;
+  private sitePlaybackPreferences: SitePlaybackPreferences | null = null;
   private browserSpeechPaused = false;
   private open = false;
   private speaking = false;
@@ -177,6 +181,7 @@ class ContentApp {
       }
       this.currentMode = mode;
       this.playbackState.mode = mode;
+      void this.persistSitePlaybackPreferences({ mode });
       this.renderPreview();
     });
     this.view.on('codeStrategyChange', (codeStrategy: CodeStrategy) => {
@@ -186,24 +191,24 @@ class ContentApp {
       if (this.snapshot) {
         this.originalSegments = this.snapshotService.buildOriginalSegments(this.snapshot, codeStrategy);
       }
+      void this.persistSitePlaybackPreferences({ codeStrategy });
       this.renderPreview();
     });
     this.view.on('speechEngineChange', (speechEngine: SpeechEngine) => {
       this.currentSpeechEngine = speechEngine;
       this.playbackState.speechEngine = speechEngine;
+      void this.persistSitePlaybackPreferences({ speechEngine });
       this.renderPlaybackChrome();
     });
     this.view.on('rateChange', (rate: number) => {
-      if (!this.settings) {
-        return;
-      }
-      this.settings.playback.rate = rate;
+      this.currentRate = rate;
       this.playbackState.rate = rate;
       if (this.currentSpeechEngine === 'remote' && this.remoteAudio.hasSource) {
         this.remoteAudio.setRate(rate);
       } else if (this.currentSpeechEngine === 'browser' && this.browserSpeech.hasActiveUtterance) {
         this.browserSpeech.updateRate(rate);
       }
+      void this.persistSitePlaybackPreferences({ rate });
       this.renderPlaybackChrome();
     });
     this.view.on('progressSeek', (ratio: number) => this.seekToProgress(ratio));
@@ -266,14 +271,18 @@ class ContentApp {
   }
 
   private async loadSettings(): Promise<void> {
-    this.applySettings(await this.gateway.loadSettings());
+    const settings = await this.gateway.loadSettings();
+    this.sitePlaybackPreferences = await this.gateway.loadSitePlaybackPreferences(document.location.href);
+    this.applySettings(settings);
   }
 
   private applySettings(settings: AppSettings, options: { external?: boolean } = {}): void {
     const previousSettings = this.settings;
-    const previousSpeechEngine = this.currentSpeechEngine;
-    const previousCodeStrategy = this.currentCodeStrategy;
+    const previousEffectivePlayback = previousSettings
+      ? resolvePlaybackPreferences(previousSettings.playback, this.sitePlaybackPreferences)
+      : null;
     this.settings = settings;
+    const effectivePlayback = resolvePlaybackPreferences(settings.playback, this.sitePlaybackPreferences);
 
     const llmChanged =
       !!previousSettings && JSON.stringify(previousSettings.providers.llm) !== JSON.stringify(settings.providers.llm);
@@ -285,19 +294,20 @@ class ContentApp {
         previousSettings.playback.outputLanguage !== settings.playback.outputLanguage ||
         previousSettings.playback.outputLocale !== settings.playback.outputLocale
       );
-    const playbackChanged =
-      !!previousSettings && JSON.stringify(previousSettings.playback) !== JSON.stringify(settings.playback);
-    const rateChanged = !!previousSettings && previousSettings.playback.rate !== settings.playback.rate;
+    const effectivePlaybackChanged =
+      !!previousEffectivePlayback && JSON.stringify(previousEffectivePlayback) !== JSON.stringify(effectivePlayback);
+    const rateChanged = !!previousEffectivePlayback && previousEffectivePlayback.rate !== effectivePlayback.rate;
 
-    if (!previousSettings || !options.external || (playbackChanged && !this.speaking)) {
-      this.currentMode = settings.playback.mode;
-      this.currentCodeStrategy = settings.playback.codeStrategy;
-      this.currentSpeechEngine = settings.playback.speechEngine;
+    if (!previousSettings || !options.external || (effectivePlaybackChanged && !this.speaking)) {
+      this.currentMode = effectivePlayback.mode;
+      this.currentCodeStrategy = effectivePlayback.codeStrategy;
+      this.currentSpeechEngine = effectivePlayback.speechEngine;
+      this.currentRate = effectivePlayback.rate;
     }
 
     this.playbackState = {
       ...this.playbackState,
-      rate: settings.playback.rate,
+      rate: this.currentRate,
       voiceId: settings.providers.tts.voiceId || 'default',
       mode: this.currentMode,
       speechEngine: this.currentSpeechEngine
@@ -306,24 +316,24 @@ class ContentApp {
     this.view.setControls({
       codeStrategy: this.currentCodeStrategy,
       speechEngine: this.currentSpeechEngine,
-      rate: settings.playback.rate,
+      rate: this.currentRate,
       browserTtsAvailable: this.capabilities.browserTtsAvailable
     });
     this.view.setCollapsed(settings.ui.collapsed);
     this.view.setPosition(settings.ui.x, settings.ui.y);
 
     if (rateChanged && this.currentSpeechEngine === 'remote' && this.remoteAudio.hasSource) {
-      this.remoteAudio.setRate(settings.playback.rate);
+      this.remoteAudio.setRate(this.currentRate);
     } else if (rateChanged && this.browserSpeech.hasActiveUtterance) {
-      this.browserSpeech.updateRate(settings.playback.rate);
+      this.browserSpeech.updateRate(this.currentRate);
     }
 
     if (ttsChanged) {
       this.cacheRegistry.clearGroup('remote-audio');
     }
 
-    if (this.snapshot && previousCodeStrategy !== settings.playback.codeStrategy) {
-      this.originalSegments = this.snapshotService.buildOriginalSegments(this.snapshot, settings.playback.codeStrategy);
+    if (this.snapshot && previousEffectivePlayback?.codeStrategy !== effectivePlayback.codeStrategy) {
+      this.originalSegments = this.snapshotService.buildOriginalSegments(this.snapshot, effectivePlayback.codeStrategy);
       this.cacheRegistry.clearGroup('smart-segments');
     }
 
@@ -333,8 +343,8 @@ class ContentApp {
     }
 
     if (options.external && this.open) {
-      const activeEngineChanged = previousSpeechEngine !== this.currentSpeechEngine;
-      if (ttsChanged || llmChanged || rewritePolicyChanged || activeEngineChanged) {
+      const activeEngineChanged = previousEffectivePlayback?.speechEngine !== this.currentSpeechEngine;
+      if (ttsChanged || llmChanged || rewritePolicyChanged || activeEngineChanged || effectivePlaybackChanged) {
         this.setNotice({
           category: 'info',
           title: '设置已更新',
@@ -391,7 +401,7 @@ class ContentApp {
     this.view.setControls({
       codeStrategy: this.currentCodeStrategy,
       speechEngine: this.currentSpeechEngine,
-      rate: this.settings?.playback.rate || 1,
+      rate: this.currentRate,
       browserTtsAvailable: this.capabilities.browserTtsAvailable
     });
     if (!this.capabilities.pointerEventsSupported) {
@@ -528,7 +538,7 @@ class ContentApp {
     this.playbackState.currentSegmentId = segment.id;
     this.playbackState.currentIndex = this.currentIndex;
     this.playbackState.totalSegments = segments.length;
-    this.playbackState.rate = this.settings.playback.rate;
+    this.playbackState.rate = this.currentRate;
     this.playbackState.voiceId = this.settings.providers.tts.voiceId || 'default';
     this.setNotice({
       category: 'info',
@@ -548,7 +558,7 @@ class ContentApp {
         this.playbackState.currentTimeSeconds = 0;
         this.playbackState.durationSeconds = undefined;
         const objectUrl = await this.getRemoteAudioUrlForIndex(this.currentIndex);
-        await this.remoteAudio.play(objectUrl, this.settings.playback.rate);
+        await this.remoteAudio.play(objectUrl, this.currentRate);
         this.speaking = true;
         void this.prefetchRemoteAudio(this.currentIndex + 1);
         return;
@@ -561,7 +571,7 @@ class ContentApp {
     this.playbackState.progressMode = 'segment-only';
     this.browserSpeech.speak(segment.spokenText, {
       lang: this.snapshot?.language || 'zh-CN',
-      rate: this.settings.playback.rate
+      rate: this.currentRate
     });
     this.speaking = true;
     this.setPlaybackStatus('playing');
@@ -1019,7 +1029,7 @@ class ContentApp {
     const provider = this.settings?.providers.tts;
     const providerKey = provider ? `${provider.providerId}::${provider.baseUrl}::${provider.modelOrVoice}` : 'missing-provider';
     const voice = provider?.voiceId || 'default';
-    const rate = this.settings?.playback.rate || 1;
+    const rate = this.currentRate || 1;
     return `${segment?.id || 'missing'}::${providerKey}::${voice}::${rate}`;
   }
 
@@ -1032,7 +1042,7 @@ class ContentApp {
     if (!this.remoteAudioPayloadCache.has(key)) {
       this.remoteAudioPayloadCache.set(
         key,
-        this.gateway.synthesizeRemote(segment.spokenText, this.settings.playback.rate, this.settings.providers.tts.voiceId)
+        this.gateway.synthesizeRemote(segment.spokenText, this.currentRate, this.settings.providers.tts.voiceId)
       );
     }
     return this.remoteAudioPayloadCache.get(key)!;
@@ -1122,6 +1132,14 @@ class ContentApp {
   private clearRemoteAudioCaches(): void {
     this.remoteAudioPayloadCache.clear();
     this.remoteAudioUrlCache.clear();
+  }
+
+  private async persistSitePlaybackPreferences(partial: SitePlaybackPreferences): Promise<void> {
+    this.sitePlaybackPreferences = {
+      ...(this.sitePlaybackPreferences || {}),
+      ...partial
+    };
+    await this.gateway.saveSitePlaybackPreferences(document.location.href, partial);
   }
 
   private persistUiState(partial: Partial<AppSettings['ui']>): void {

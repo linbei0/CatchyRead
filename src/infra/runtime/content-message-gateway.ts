@@ -4,6 +4,7 @@ import type {
   AppSettings,
   RemoteAudioPayload,
   RewriteRequestPayload,
+  SitePlaybackPreferences,
   SmartScriptSegment,
   UiPreferences
 } from '@/shared/types';
@@ -21,6 +22,8 @@ interface StorageChangeEventApi {
 
 export interface ContentMessageGateway {
   loadSettings(): Promise<AppSettings>;
+  loadSitePlaybackPreferences(url: string): Promise<SitePlaybackPreferences | null>;
+  saveSitePlaybackPreferences(url: string, playback: SitePlaybackPreferences): Promise<SitePlaybackPreferences>;
   saveUiState(partial: Partial<UiPreferences>): Promise<void>;
   openOptions(): Promise<void>;
   rewrite(payload: RewriteRequestPayload): Promise<SmartScriptSegment[]>;
@@ -38,6 +41,22 @@ export class BrowserContentMessageGateway implements ContentMessageGateway {
   async loadSettings(): Promise<AppSettings> {
     const result = await this.sendMessage<{ settings: AppSettings }>({ type: 'catchyread/get-settings' });
     return result.settings;
+  }
+
+  async loadSitePlaybackPreferences(url: string): Promise<SitePlaybackPreferences | null> {
+    const result = await this.sendMessage<{ playback: SitePlaybackPreferences | null }>({
+      type: 'catchyread/get-site-playback-preferences',
+      payload: { url }
+    });
+    return result.playback;
+  }
+
+  async saveSitePlaybackPreferences(url: string, playback: SitePlaybackPreferences): Promise<SitePlaybackPreferences> {
+    const result = await this.sendMessage<{ playback: SitePlaybackPreferences }>({
+      type: 'catchyread/save-site-playback-preferences',
+      payload: { url, playback }
+    });
+    return result.playback;
   }
 
   async saveUiState(partial: Partial<UiPreferences>): Promise<void> {

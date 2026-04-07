@@ -3,6 +3,7 @@ import type {
   ProviderConfig,
   ProviderTestResult,
   RemoteAudioPayload,
+  SitePlaybackPreferences,
   SmartScriptSegment,
   UiPreferences
 } from '@/shared/types';
@@ -17,6 +18,11 @@ export interface UiPreferencesRepository {
   update(partial: Partial<UiPreferences>): Promise<UiPreferences>;
 }
 
+export interface SitePlaybackPreferencesRepository {
+  load(url: string): Promise<SitePlaybackPreferences | null>;
+  save(url: string, playback: SitePlaybackPreferences): Promise<SitePlaybackPreferences>;
+}
+
 export interface ProviderGateway {
   rewrite(provider: ProviderConfig, message: Extract<RuntimeMessage, { type: 'catchyread/rewrite' }>['payload']): Promise<SmartScriptSegment[]>;
   cancelRewrite(requestId: string): Promise<void>;
@@ -29,6 +35,7 @@ export interface RuntimeRouterDependencies {
   openOptionsPage: () => Promise<void>;
   settingsRepository: SettingsRepository;
   uiPreferencesRepository: UiPreferencesRepository;
+  sitePlaybackPreferencesRepository: SitePlaybackPreferencesRepository;
   providerGateway: ProviderGateway;
 }
 
@@ -49,6 +56,14 @@ export function createRuntimeMessageRouter(deps: RuntimeRouterDependencies) {
       case 'catchyread/save-ui-state':
         return {
           ui: await deps.uiPreferencesRepository.update(message.payload)
+        };
+      case 'catchyread/get-site-playback-preferences':
+        return {
+          playback: await deps.sitePlaybackPreferencesRepository.load(message.payload.url)
+        };
+      case 'catchyread/save-site-playback-preferences':
+        return {
+          playback: await deps.sitePlaybackPreferencesRepository.save(message.payload.url, message.payload.playback)
         };
       case 'catchyread/test-provider':
         return deps.providerGateway.testConnectivity(message.payload.providerKind);

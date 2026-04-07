@@ -10,6 +10,7 @@ import {
 import { TaskQueue } from '@/lib/request/task-queue';
 import type { RuntimeMessage } from '@/shared/messages';
 import type { ProviderConfig, RewriteRequestPayload } from '@/shared/types';
+import { loadSitePlaybackPreferences, saveSitePlaybackPreferences } from '@/lib/storage/site-playback-preferences';
 import { loadSettings, saveSettings } from '@/lib/storage/settings';
 import { updateUiPreferences } from '@/lib/storage/ui-preferences';
 
@@ -71,6 +72,10 @@ const router = createRuntimeMessageRouter({
   },
   uiPreferencesRepository: {
     update: updateUiPreferences
+  },
+  sitePlaybackPreferencesRepository: {
+    load: loadSitePlaybackPreferences,
+    save: saveSitePlaybackPreferences
   },
   providerGateway: {
     rewrite: (provider, payload) =>

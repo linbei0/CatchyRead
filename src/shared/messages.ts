@@ -4,6 +4,7 @@ import type {
   ProviderTestResult,
   RemoteAudioPayload,
   RewriteRequestPayload,
+  SitePlaybackPreferences,
   UiPreferences
 } from '@/shared/types';
 
@@ -13,6 +14,19 @@ export type RuntimeMessage =
   | { type: 'catchyread/get-settings' }
   | { type: 'catchyread/save-settings'; payload: AppSettings }
   | { type: 'catchyread/save-ui-state'; payload: Partial<UiPreferences> }
+  | {
+      type: 'catchyread/get-site-playback-preferences';
+      payload: {
+        url: string;
+      };
+    }
+  | {
+      type: 'catchyread/save-site-playback-preferences';
+      payload: {
+        url: string;
+        playback: SitePlaybackPreferences;
+      };
+    }
   | {
       type: 'catchyread/test-provider';
       payload: {
@@ -48,6 +62,10 @@ export interface ProviderTestMessageResult extends ProviderTestResult {}
 
 export interface TtsPreviewMessageResult {
   audio: RemoteAudioPayload;
+}
+
+export interface SitePlaybackPreferencesMessageResult {
+  playback: SitePlaybackPreferences | null;
 }
 
 export function isProviderConfigured(provider: ProviderConfig): boolean {
