@@ -1,4 +1,11 @@
-import type { AppSettings, ProviderConfig, ProviderTestResult, RemoteAudioPayload, SmartScriptSegment, UiPreferences } from '@/shared/types';
+import type {
+  AppSettings,
+  ProviderConfig,
+  ProviderTestResult,
+  RemoteAudioPayload,
+  SmartScriptSegment,
+  UiPreferences
+} from '@/shared/types';
 import type { RuntimeMessage } from '@/shared/messages';
 
 export interface SettingsRepository {

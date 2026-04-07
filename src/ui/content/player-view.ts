@@ -1,4 +1,4 @@
-import type { CodeStrategy, ReadingMode, SpeechEngine, UserNotice } from '@/shared/types';
+import type { CodeStrategy, ReadingMode, SpeechEngine } from '@/shared/types';
 import type { PreviewItemViewState } from '@/domain/playback/player-view-state';
 import { renderPreviewButton } from '@/ui/content/player-markup';
 import { renderPlayerIcon, type PlayerIconName } from '@/ui/content/player-icons';
@@ -102,6 +102,7 @@ function createTemplate(documentRef: Document): HTMLDivElement {
           </div>
           <div class="status-meta">
             <span class="state-badge" id="state-badge">待开始</span>
+            <span class="support-badge" id="support-badge">待评估</span>
             <span id="segment-position">00 / 00</span>
           </div>
         </div>
@@ -212,6 +213,10 @@ export function buildPlayerViewCss(): string {
       display: inline-flex; align-items: center; min-height: 26px; padding: 0 9px; border-radius: 999px;
       font-size: 11px; background: rgba(245,181,111,.12); color: #ffd59f;
     }
+    .support-badge {
+      display: inline-flex; align-items: center; min-height: 26px; padding: 0 9px; border-radius: 999px;
+      font-size: 11px; background: rgba(148,163,184,.16); color: #dbe7ff;
+    }
     button {
       cursor: pointer;
       min-height: 36px;
@@ -265,6 +270,9 @@ export function buildPlayerViewCss(): string {
     .state-badge[data-tone="success"] { background: rgba(134,211,158,.14); color: #9fe0b5; }
     .state-badge[data-tone="warning"] { background: rgba(245,181,111,.16); color: #ffd59f; }
     .state-badge[data-tone="danger"] { background: rgba(255,139,123,.16); color: #ffb5a9; }
+    .support-badge[data-tone="success"] { background: rgba(134,211,158,.14); color: #9fe0b5; }
+    .support-badge[data-tone="warning"] { background: rgba(245,181,111,.16); color: #ffd59f; }
+    .support-badge[data-tone="danger"] { background: rgba(255,139,123,.16); color: #ffb5a9; }
     .headline-stack { display: grid; gap: 6px; min-height: 64px; }
     #current-title { font-size: 21px; line-height: 1.12; letter-spacing: -.03em; text-wrap: balance; }
     .queue-wrap { position: relative; }
@@ -672,6 +680,16 @@ export class PlayerView {
     }
   }
 
+  setSupportStatus(label: string, tone: 'default' | 'success' | 'warning' | 'danger', description = ''): void {
+    const badge = this.root?.querySelector<HTMLSpanElement>('#support-badge');
+    if (!badge) {
+      return;
+    }
+    badge.textContent = label;
+    badge.dataset.tone = tone;
+    badge.title = description;
+  }
+
   setProgress(percent: number, leftText: string, rightText: string): void {
     const fill = this.root?.querySelector<HTMLDivElement>('#progress-fill');
     const meta = this.root?.querySelector<HTMLDivElement>('#progress-meta');
@@ -709,22 +727,6 @@ export class PlayerView {
     button.setAttribute('aria-label', label);
     button.title = label;
     button.setAttribute('aria-pressed', String(enabled));
-  }
-
-  renderNotice(notice: UserNotice): void {
-    const status = this.root?.querySelector<HTMLDivElement>('#status');
-    if (!status) {
-      return;
-    }
-    const dangerCategories = ['permission-denied', 'network', 'provider-rejected', 'invalid-response', 'audio-playback', 'browser-unsupported', 'unknown'];
-    status.dataset.tone = notice.category === 'success' ? 'success' : dangerCategories.includes(notice.category) ? 'danger' : 'default';
-    status.classList.toggle('compact', !dangerCategories.includes(notice.category));
-    status.innerHTML = `
-      <div class="notice-title">${notice.title}</div>
-      ${notice.message ? `<div class="notice-body">${notice.message}</div>` : ''}
-      ${notice.recommendedAction ? `<div class="notice-action">${notice.recommendedAction}</div>` : ''}
-      ${notice.debugDetails ? `<details><summary>查看调试信息</summary><div>${notice.debugDetails}</div></details>` : ''}
-    `;
   }
 
   renderPreview(items: PreviewItemViewState[], currentIndex: number, totalCount: number, stale: boolean, staleLabel: string): void {

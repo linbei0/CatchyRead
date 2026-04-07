@@ -1,6 +1,12 @@
 import browser from 'webextension-polyfill';
 
-import type { AppSettings, RemoteAudioPayload, RewriteRequestPayload, SmartScriptSegment, UiPreferences } from '@/shared/types';
+import type {
+  AppSettings,
+  RemoteAudioPayload,
+  RewriteRequestPayload,
+  SmartScriptSegment,
+  UiPreferences
+} from '@/shared/types';
 import type { RuntimeMessage } from '@/shared/messages';
 import { SETTINGS_STORAGE_KEY } from '@/lib/storage/settings';
 

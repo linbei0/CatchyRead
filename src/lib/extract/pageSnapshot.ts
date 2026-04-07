@@ -2,7 +2,7 @@ import { Readability } from '@mozilla/readability';
 
 import type { PageSnapshot, StructuredBlock, StructuredBlockType } from '@/lib/shared/types';
 
-const BLOCK_SELECTOR = 'h1, h2, h3, h4, h5, h6, p, pre, blockquote, li, .note, .tip, .warning, .callout';
+const BLOCK_SELECTOR = 'h1, h2, h3, h4, h5, h6, p, pre, blockquote, li, table, .note, .tip, .warning, .callout';
 const NOISE_SELECTOR = [
   'header',
   'footer',
@@ -46,6 +46,22 @@ function normalizeCode(text: string): string {
     .map((line) => line.trimEnd())
     .join('\n')
     .trim();
+}
+
+function normalizeTable(element: Element): { text: string; rowCount: number; columnCount: number } {
+  const rows = Array.from(element.querySelectorAll('tr'))
+    .map((row) =>
+      Array.from(row.querySelectorAll('th, td'))
+        .map((cell) => normalizeText(cell.textContent || ''))
+        .filter(Boolean)
+    )
+    .filter((cells) => cells.length);
+
+  return {
+    text: rows.map((cells) => cells.join(' | ')).join('\n').trim(),
+    rowCount: rows.length,
+    columnCount: Math.max(0, ...rows.map((cells) => cells.length))
+  };
 }
 
 function getReadabilityReference(document: Document): {
@@ -119,6 +135,9 @@ function inferType(element: Element): StructuredBlockType {
   if (tagName === 'li') {
     return 'list';
   }
+  if (tagName === 'table') {
+    return 'table';
+  }
   if (element.matches('.note, .tip, .warning, .callout')) {
     return 'note';
   }
@@ -130,11 +149,17 @@ function shouldSkip(element: Element): boolean {
     return true;
   }
 
-  if (element.tagName.toLowerCase() === 'p' && element.closest('.note, .tip, .warning, .callout') && !element.parentElement?.matches('.note, .tip, .warning, .callout')) {
+  if (element.tagName.toLowerCase() === 'p' && element.closest('.note, .tip, .warning, .callout')) {
     return true;
   }
 
-  const text = element.tagName.toLowerCase() === 'pre' ? normalizeCode(element.textContent || '') : normalizeText(element.textContent || '');
+  const tagName = element.tagName.toLowerCase();
+  const text =
+    tagName === 'pre'
+      ? normalizeCode(element.textContent || '')
+      : tagName === 'table'
+        ? normalizeTable(element).text
+        : normalizeText(element.textContent || '');
   if (/^(目录|相关文章|相关阅读|you may also like|related articles|share this|上一篇|下一篇)$/i.test(text)) {
     return true;
   }
@@ -162,7 +187,13 @@ function inferPriority(text: string, isWarningLike: boolean): StructuredBlock['p
 
 function buildBlock(element: Element, index: number, headingPath: string[]): StructuredBlock | null {
   const type = inferType(element);
-  const text = type === 'code' ? normalizeCode(element.textContent || '') : normalizeText(element.textContent || '');
+  const tableMeta = type === 'table' ? normalizeTable(element) : null;
+  const text =
+    type === 'code'
+      ? normalizeCode(element.textContent || '')
+      : type === 'table'
+        ? tableMeta?.text || ''
+        : normalizeText(element.textContent || '');
   if (!text) {
     return null;
   }
@@ -181,7 +212,19 @@ function buildBlock(element: Element, index: number, headingPath: string[]): Str
     headingPath,
     priority: inferPriority(text, isWarningLike),
     isWarningLike,
-    metadata: type === 'code' ? { language: extractLanguage(element) } : undefined
+    metadata:
+      type === 'code'
+        ? { language: extractLanguage(element) }
+        : type === 'note'
+          ? {
+              label: ['warning', 'tip', 'note', 'callout'].find((value) => element.classList.contains(value))
+            }
+          : type === 'table'
+            ? {
+                rowCount: tableMeta?.rowCount,
+                columnCount: tableMeta?.columnCount
+              }
+            : undefined
   };
 }
 

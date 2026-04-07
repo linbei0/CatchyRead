@@ -46,4 +46,37 @@ describe('extractPageSnapshot', () => {
     expect(snapshot.structuredBlocks.some((item) => item.text.includes('广告'))).toBe(false);
     expect(snapshot.structuredBlocks[3]?.sourceElementId).toBeTruthy();
   });
+
+  test('识别技术文档里的表格与提示块', () => {
+    const dom = new JSDOM(
+      `
+<!doctype html>
+<html lang="en">
+  <head><title>Fetch API</title></head>
+  <body>
+    <main>
+      <article>
+        <h1>Fetch API</h1>
+        <div class="callout warning"><p>Warning: credentials mode depends on your server config.</p></div>
+        <table>
+          <thead><tr><th>Option</th><th>Meaning</th></tr></thead>
+          <tbody><tr><td>cache</td><td>Control HTTP cache behavior</td></tr></tbody>
+        </table>
+      </article>
+    </main>
+  </body>
+</html>
+      `,
+      { url: 'https://example.com/fetch-api' }
+    );
+
+    const snapshot = extractPageSnapshot(dom.window.document);
+
+    expect(snapshot.structuredBlocks.map((item) => item.type)).toEqual(['heading', 'note', 'table']);
+    expect(snapshot.structuredBlocks[1]?.metadata?.label).toBe('warning');
+    expect(snapshot.structuredBlocks[2]?.metadata).toMatchObject({
+      columnCount: 2,
+      rowCount: 2
+    });
+  });
 });

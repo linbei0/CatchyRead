@@ -1,4 +1,4 @@
-export type StructuredBlockType = 'paragraph' | 'heading' | 'list' | 'quote' | 'code' | 'note';
+export type StructuredBlockType = 'paragraph' | 'heading' | 'list' | 'quote' | 'code' | 'note' | 'table';
 export type SmartSegmentKind = 'main' | 'code-summary' | 'warning';
 export type ReadingMode = 'original' | 'smart';
 export type CodeStrategy = 'summary' | 'full' | 'skip';
@@ -7,6 +7,7 @@ export type RewriteOutputLanguage = 'follow-page' | 'follow-ui' | 'explicit-loca
 export type BlockPriority = 'critical' | 'normal' | 'supporting';
 export type PlaybackStatus = 'idle' | 'preparing' | 'playing' | 'paused' | 'error';
 export type PlaybackProgressMode = 'segment-only' | 'media-time';
+export type PageSupportStatus = 'fully-supported' | 'partial-support' | 'prefer-original' | 'unsupported';
 export type UserNoticeCategory =
   | 'info'
   | 'success'
@@ -37,6 +38,8 @@ export interface StructuredBlock {
     language?: string;
     label?: string;
     canonicalBlockIds?: string[];
+    rowCount?: number;
+    columnCount?: number;
   };
 }
 

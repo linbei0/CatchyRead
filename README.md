@@ -21,6 +21,7 @@ CatchyRead 是一个浏览器扩展原型，目标不是简单“朗读网页”
 - 自动提取正文结构块，减少导航栏、页脚、杂项内容对收听的干扰
 - 支持“原文模式”与“智能模式”，在忠实原文和可听性之间切换
 - 默认把代码块整理成作用说明，而不是逐字朗读长代码
+- 支持识别表格、提示块和 API 签名，并整理成更适合听的摘要
 - 提供页面内悬浮播放器，支持段落高亮、点击跳转、键盘导航
 - 支持浏览器语音，也支持 OpenAI-compatible / Qwen DashScope 远端 TTS
 - 通过 `activeTab + scripting` 按需注入，而不是对所有页面常驻运行
@@ -33,6 +34,7 @@ CatchyRead 是一个浏览器扩展原型，目标不是简单“朗读网页”
 - 将页面内容组织成可预览、可定位、可播放的段落片段
 - 对动态页面变化和 SPA 路由切换给出“刷新内容”提示
 - 支持输出语言跟随页面，适配中英文技术内容
+- 对当前页面显示支持状态：完全支持、部分支持、建议原文模式、当前不支持
 
 ### 播放体验
 
@@ -191,6 +193,7 @@ CatchyRead 仍处于原型阶段，但核心链路已经打通：
 - 播放器相关：`src/app/content/`、`src/ui/content/`、`src/infra/playback/`
 - 设置页相关：`src/app/options/`、`src/ui/options/`、`src/domain/options/`
 - 后台消息相关：`src/app/background/`、`src/background/`
+- 质量基线与评估：`docs/quality/`、`src/domain/quality/`
 
 > [!IMPORTANT]
 > 交付前建议始终执行 `npm test`、`npm run typecheck`、`npm run build`，并在浏览器中重新加载 `dist/` 做一次手动回归。

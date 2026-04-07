@@ -1,4 +1,9 @@
-import { createRuntimeMessageRouter, type ProviderGateway, type SettingsRepository, type UiPreferencesRepository } from '@/background/runtime-message-router';
+import {
+  createRuntimeMessageRouter,
+  type ProviderGateway,
+  type SettingsRepository,
+  type UiPreferencesRepository
+} from '@/background/runtime-message-router';
 import type { ProviderTestResult } from '@/shared/types';
 import type { RuntimeMessage } from '@/shared/messages';
 import type { fetchRemoteTtsAudio, fetchRewriteSegments } from '@/lib/providers/openaiCompatible';

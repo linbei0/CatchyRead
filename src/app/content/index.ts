@@ -2,6 +2,7 @@ import browser from 'webextension-polyfill';
 
 import { RuntimeCacheRegistry } from '@/lib/cache/runtime-cache-registry';
 import { buildSuccessNotice, mapErrorToNotice } from '@/lib/ui/feedback';
+import { assessPageSupport, type PageSupportAssessment } from '@/domain/content/page-support';
 import {
   buildRewriteChunks,
   normalizeStructuredBlocksForRewrite,
@@ -102,6 +103,12 @@ class ContentApp {
   private speaking = false;
   private pageSelectionMode = false;
   private pageSnapshotStale = false;
+  private pageSupport: PageSupportAssessment = {
+    status: 'unsupported',
+    label: '待评估',
+    tone: 'default',
+    reason: '页面还没有完成分析。'
+  };
   private waitingForRewriteAppend = false;
   private persistUiTimer: ReturnType<typeof setTimeout> | null = null;
   private stopObservingSettings: (() => void) | null = null;
@@ -347,6 +354,7 @@ class ContentApp {
     this.snapshotRevision += 1;
     this.snapshot = refreshed.snapshot;
     this.originalSegments = refreshed.originalSegments;
+    this.pageSupport = assessPageSupport(refreshed.snapshot);
     this.currentIndex = Math.min(this.currentIndex, Math.max(this.previewSource().length - 1, 0));
     this.pageSnapshotStale = false;
     this.renderPreview();
@@ -826,6 +834,7 @@ class ContentApp {
             : 'default';
     this.view.setMode(this.currentMode);
     this.view.setHeadline(viewState.currentTitle, viewState.positionLabel, viewState.statusLabel, tone);
+    this.view.setSupportStatus(this.pageSupport.label, this.pageSupport.tone, this.pageSupport.reason);
     const totalSegments = segments.length;
     const currentNumber = totalSegments ? Math.min(this.currentIndex + 1, totalSegments) : 0;
     const segmentRatio = totalSegments ? currentNumber / totalSegments : 0;
@@ -855,15 +864,6 @@ class ContentApp {
               : '开始收听';
     this.view.setPlayPause(playLabel, this.playbackState.status === 'preparing');
     this.view.setPageSelectionButton(this.pageSelectionMode, !viewState.showPagePicker);
-    this.view.renderNotice(
-      this.playbackState.notice ||
-        ({
-          category: 'info',
-          title: '准备就绪',
-          message: '',
-          recommendedAction: ''
-        } satisfies UserNotice)
-    );
   }
 
   private setNotice(notice: UserNotice, status?: PlaybackStatus): void {

@@ -64,11 +64,11 @@ describe('buildSpokenSegments', () => {
   test('当块携带 canonicalBlockIds 元数据时会保留全部 sourceBlockIds', () => {
     const segments = buildSpokenSegments(
       [
-        {
-          id: 'paragraph-merged',
-          type: 'paragraph',
-          text: '这是合并后的回退段落。',
-          sourceElementId: 'catchyread-merged',
+      {
+        id: 'paragraph-merged',
+        type: 'paragraph',
+        text: '这是合并后的回退段落。',
+        sourceElementId: 'catchyread-merged',
           headingPath: ['准备'],
           metadata: {
             canonicalBlockIds: ['catchyread-2', 'catchyread-3']
@@ -82,5 +82,74 @@ describe('buildSpokenSegments', () => {
     );
 
     expect(segments[0]?.sourceBlockIds).toEqual(['catchyread-2', 'catchyread-3']);
+  });
+
+  test('表格块会整理成适合听读的摘要', () => {
+    const segments = buildSpokenSegments(
+      [
+        {
+          id: 'table-1',
+          type: 'table',
+          text: '命令 | 作用\npnpm dev | 本地开发\npnpm build | 生产构建',
+          sourceElementId: 'catchyread-4',
+          metadata: {
+            columnCount: 2,
+            rowCount: 3
+          }
+        }
+      ],
+      {
+        mode: 'original',
+        codeStrategy: 'summary'
+      }
+    );
+
+    expect(segments).toHaveLength(1);
+    expect(segments[0]?.spokenText).toContain('表格');
+    expect(segments[0]?.spokenText).toContain('2 列');
+    expect(segments[0]?.spokenText).toContain('3 行');
+  });
+
+  test('API 签名代码块会优先说明接口作用而不是按字符朗读', () => {
+    const segments = buildSpokenSegments(
+      [
+        {
+          id: 'code-2',
+          type: 'code',
+          text: 'export interface BuildOptions {\n  watch?: boolean;\n  minify?: boolean;\n}',
+          sourceElementId: 'catchyread-5',
+          metadata: {
+            language: 'ts'
+          }
+        }
+      ],
+      {
+        mode: 'original',
+        codeStrategy: 'summary'
+      }
+    );
+
+    expect(segments[0]?.spokenText).toContain('API');
+    expect(segments[0]?.spokenText).not.toContain('watch?: boolean');
+  });
+
+  test('列表项朗读时不再使用生硬的固定前缀', () => {
+    const segments = buildSpokenSegments(
+      [
+        {
+          id: 'list-1',
+          type: 'list',
+          text: '先安装依赖，再执行构建命令。',
+          sourceElementId: 'catchyread-6'
+        }
+      ],
+      {
+        mode: 'original',
+        codeStrategy: 'summary'
+      }
+    );
+
+    expect(segments[0]?.spokenText).toBe('先安装依赖，再执行构建命令。');
+    expect(segments[0]?.spokenText).not.toContain('列表项');
   });
 });

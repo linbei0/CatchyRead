@@ -1,0 +1,24 @@
+[
+  {
+    "pageId": "mdn-fetch",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API",
+    "metrics": {
+      "contentExtraction": 5,
+      "codeHandling": 4,
+      "segmentation": 4,
+      "pageNavigation": 5,
+      "firstAudioLatency": 3
+    }
+  },
+  {
+    "pageId": "python-dataclass",
+    "url": "https://docs.python.org/3/library/dataclasses.html",
+    "metrics": {
+      "contentExtraction": 4,
+      "codeHandling": 2,
+      "segmentation": 3,
+      "pageNavigation": 4,
+      "firstAudioLatency": 3
+    }
+  }
+]

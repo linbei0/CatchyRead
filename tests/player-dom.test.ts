@@ -168,4 +168,19 @@ describe('PlayerView', () => {
     expect(root?.querySelector('#collapsed-position')?.textContent).toBe('46 / 82');
     expect(root?.querySelector<HTMLButtonElement>('#collapse')?.getAttribute('aria-label')).toBe('展开');
   });
+
+  test('支持状态会显示在主面板里，更多面板仅保留有效控制项', () => {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>');
+    const view = new PlayerView(dom.window.document);
+
+    view.show();
+    view.setSupportStatus('建议原文模式', 'warning', '这一页包含较多代码和表格。');
+
+    const root = view.getRoot()!;
+    root.querySelector<HTMLButtonElement>('#more-toggle')?.click();
+
+    expect(root.querySelector('#support-badge')?.textContent).toBe('建议原文模式');
+    expect(root.querySelector('#support-badge')?.getAttribute('title')).toContain('较多代码');
+    expect(root.querySelectorAll('.feedback-action').length).toBe(0);
+  });
 });
